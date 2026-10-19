@@ -156,11 +156,20 @@ abstract class AuditActions {
         return '$userName menyesuaikan stok "$name" dari $oldS menjadi $newS (Alasan: $reason)';
 
       case stockOpnameFinalize:
-        return '$userName menyelesaikan dan memfinalisasi Stock Opname';
+        final code = d['code'] ?? d['opnameCode'] ?? '';
+        final diffCount = d['diffCount'] ?? d['totalDifferenceItems'] ?? 0;
+        final totalValue = formatRupiah(d['totalDiffValue'] ?? 0);
+        return '$userName memfinalisasi Stock Opname $code ($diffCount item selisih, nilai: $totalValue)';
 
       case stockPurchaseReceive:
-        final no = d['purchaseNo'] ?? '-';
-        return '$userName menerima barang dari pembelian $no';
+        final no = d['refNo'] ?? d['purchaseNo'] ?? '-';
+        final total = formatRupiah(d['total'] ?? 0);
+        return '$userName menerima barang dari pembelian $no (Total: $total)';
+
+      case stockPurchaseCancel:
+        final no = d['refNo'] ?? d['purchaseNo'] ?? '-';
+        final r = d['reason'] ?? '-';
+        return '$userName membatalkan pembelian $no (Alasan: $r)';
 
       case saleVoid:
         final inv = d['invoiceNo'] ?? '-';

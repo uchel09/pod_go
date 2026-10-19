@@ -109,6 +109,9 @@ View  ──>  Controller  ──>  Repository  ──>  DAO / Local DB
 - Tipe movement: sale, purchase, opname, void, adjustment.
 - sale_items menyimpan SNAPSHOT: productName, price, costPrice saat transaksi. Laporan lama tidak boleh berubah saat harga produk diedit.
 - Transaksi void tidak dihapus dan tidak bisa diedit.
+- Pembelian barang (PurchaseRepository.receive) menambah stok bertipe purchase dan dapat memperbarui costPrice master produk jika toggle aktif.
+- Pembatalan pembelian (PurchaseRepository.cancelPurchase) membalikkan stok lewat movement bertipe adjustment (negatif) hanya jika stok saat ini mencukupi. Pembatalan pembelian TIDAK mengembalikan costPrice produk yang sudah diperbarui.
+- Stock opname (OpnameRepository.finalize) dijalankan dalam satu database.transaction(): systemQty dihitung ulang dari currentStock terkini produk untuk mencegah race condition dengan penjualan kasir, selisih != 0 dicatat sebagai stock_movements bertipe opname via StockRepository.applyMovement, dan sesi menjadi final (read-only dan tidak dapat dihapus).
 
 ## 9. Checkout dan Struk
 - Checkout (SaleRepository.checkout) menyimpan transaksi secara atomik dan TIDAK boleh bergantung pada printer atau PDF.
@@ -130,5 +133,32 @@ View  ──>  Controller  ──>  Repository  ──>  DAO / Local DB
 - Log audit (`audit_logs`) bersifat append-only: AuditDao tidak memiliki method update maupun delete.
 - Log audit selalu ikut ter-backup saat proses backup database dibuat.
 - Fitur ekspor log aktivitas akan disediakan pada Prompt 14.
+
+## 13. Definisi Angka Laporan Keuangan
+- **Omzet**: Jumlah `sales.total` dari transaksi berstatus `completed` (transaksi `void` TIDAK dihitung).
+- **Pajak**: Jumlah `sales.tax` dari transaksi `completed`.
+- **Pendapatan Bersih**: `Omzet - Pajak`. (Catatan: diskon sudah memotong subtotal menjadi total di `sales.total`, sedangkan kolom `sales.discount` dan `sales.tax` akan bernilai 0 sampai fitur diskon/pajak aktif).
+- **HPP (Harga Pokok Penjualan)**: Jumlah `(qty * costPrice snapshot)` dari `sale_items` untuk transaksi `completed`.
+- **Laba Kotor**: `Pendapatan Bersih - HPP`.
+- Rumus ini wajib konsisten di semua komponen: DAO, Repository, Dashboard, dan Laporan.
+
+## 14. Aturan Impor Data (CSV & Excel)
+- Fitur impor dikunci untuk tier Semi-Premium ke atas (`Feature.importExport`) dan memerlukan izin `PermissionKeys.importManage` (dual-layer check di Controller & Repository).
+- Stok awal dari impor dicatat melalui `StockRepository.applyMovement` bertipe `adjustment`.
+- Mode update (upsert) tidak menimpa stok produk yang ada kecuali opsi "koreksi stok" dicentang dan `stok_awal` diisi.
+- Kode internal produk (`P000123`) dipertahankan saat diimpor dan counter `internal_product_counter` di `app_settings` dinaikkan secara sinkron agar tidak terjadi bentrok kode.
+- Eksekusi impor dijalankan dalam `database.transaction()` per batch (~200 baris) dengan parsing toleran format angka/mata uang Rupiah.
+- Setiap eksekusi impor dicatat ke `AuditService` dengan action `import.run`.
+
+## 15. Aturan Ekspor Data (CSV & Excel)
+- Fitur ekspor dikunci untuk tier Semi-Premium ke atas (`Feature.importExport`) dan memerlukan izin `PermissionKeys.reportExport` (dual-layer check di Controller & Repository).
+- Berkas CSV wajib diawali byte UTF-8 BOM (`[0xEF, 0xBB, 0xBF]`) agar karakter Rupiah dan penulisan teks otomatis terbaca rapi di Microsoft Excel Windows. Berkas Excel diekspor dalam format `.xlsx`.
+- Sensor data finansial sensitif:
+  - Kolom harga beli produk (`costPrice`) dan pembelian hanya disertakan jika memiliki izin `PermissionKeys.productViewCost`.
+  - Kolom harga modal snapshot dan laba kotor pada transaksi penjualan dan laporan lengkap hanya disertakan jika memiliki izin `PermissionKeys.reportViewProfit`.
+- Ekspor jejak aktivitas pengguna (`audit_logs`) wajib memvalidasi izin `PermissionKeys.auditView`.
+- Setiap ekspor data dicatat secara otomatis ke `AuditService` dengan action `export.run` (merekam jenis entitas, format file, rentang tanggal, dan jumlah baris tanpa membocorkan data rahasia/finansial).
+
+
 
 

@@ -1,12 +1,16 @@
 import 'package:get/get.dart';
 
 import '../../data/local/app_database.dart';
+import '../../data/local/daos/report_dao.dart';
 import '../../data/repositories/audit_repository.dart';
 import '../../data/repositories/category_repository.dart';
+import '../../data/repositories/export_repository.dart';
+import '../../data/repositories/import_repository.dart';
 import '../../data/repositories/license_repository.dart';
 import '../../data/repositories/opname_repository.dart';
 import '../../data/repositories/product_repository.dart';
 import '../../data/repositories/purchase_repository.dart';
+import '../../data/repositories/report_repository.dart';
 import '../../data/repositories/role_repository.dart';
 import '../../data/repositories/sale_repository.dart';
 import '../../data/repositories/settings_repository.dart';
@@ -44,12 +48,61 @@ class InitialBinding extends Bindings {
     Get.lazyPut<UnitRepository>(() => UnitRepository(db.unitDao), fenix: true);
     Get.lazyPut<SupplierRepository>(() => SupplierRepository(db.supplierDao), fenix: true);
     Get.lazyPut<SaleRepository>(() => SaleRepository(db, db.saleDao, db.productDao, db.stockDao), fenix: true);
-    Get.lazyPut<PurchaseRepository>(() => PurchaseRepository(db.purchaseDao), fenix: true);
     Get.lazyPut<StockRepository>(() => StockRepository(db, db.stockDao, db.productDao), fenix: true);
-    Get.lazyPut<OpnameRepository>(() => OpnameRepository(db.opnameDao), fenix: true);
+    Get.lazyPut<PurchaseRepository>(
+      () => PurchaseRepository(
+        db,
+        db.purchaseDao,
+        Get.find<StockRepository>(),
+        db.productDao,
+        Get.find<ProductRepository>(),
+        db.supplierDao,
+      ),
+      fenix: true,
+    );
+    Get.lazyPut<OpnameRepository>(
+      () => OpnameRepository(
+        db,
+        db.opnameDao,
+        Get.find<StockRepository>(),
+        db.productDao,
+      ),
+      fenix: true,
+    );
     Get.lazyPut<SettingsRepository>(() => SettingsRepository(db.settingsDao), fenix: true);
     Get.lazyPut<AuditRepository>(() => AuditRepository(db.auditDao), fenix: true);
     Get.lazyPut<LicenseRepository>(() => LicenseRepository(db.licenseDao), fenix: true);
+    Get.lazyPut<ReportDao>(() => ReportDao(db), fenix: true);
+    Get.lazyPut<ReportRepository>(
+      () => ReportRepository(Get.find<ReportDao>()),
+      fenix: true,
+    );
+    Get.lazyPut<ImportRepository>(
+      () => ImportRepository(
+        db: db,
+        productDao: db.productDao,
+        categoryDao: db.categoryDao,
+        unitDao: db.unitDao,
+        supplierDao: db.supplierDao,
+        settingsDao: db.settingsDao,
+        stockRepo: Get.find<StockRepository>(),
+        productRepo: Get.find<ProductRepository>(),
+      ),
+      fenix: true,
+    );
+    Get.lazyPut<ExportRepository>(
+      () => ExportRepository(
+        db: db,
+        productDao: db.productDao,
+        saleDao: db.saleDao,
+        stockDao: db.stockDao,
+        opnameDao: db.opnameDao,
+        purchaseDao: db.purchaseDao,
+        auditDao: db.auditDao,
+        reportDao: Get.find<ReportDao>(),
+      ),
+      fenix: true,
+    );
     Get.lazyPut<PosController>(() => PosController(), fenix: true);
 
     // Entitlement Provider (dapat ditukar implementasinya dalam satu baris)

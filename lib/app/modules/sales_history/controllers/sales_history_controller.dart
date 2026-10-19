@@ -67,6 +67,13 @@ class SalesHistoryController extends GetxController {
   @override
   void onInit() {
     super.onInit();
+    final args = Get.arguments;
+    if (args is Map && args['date'] is DateTime) {
+      final date = args['date'] as DateTime;
+      final start = DateTime(date.year, date.month, date.day);
+      selectedDateFilter.value = 'custom';
+      customDateRange.value = DateTimeRange(start: start, end: start);
+    }
     scrollController.addListener(_onScroll);
     loadInitialData();
   }

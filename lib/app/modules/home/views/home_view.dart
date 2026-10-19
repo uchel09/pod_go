@@ -2,20 +2,20 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
 import '../../../core/config/app_config.dart';
+import '../../../core/features/feature_enum.dart';
 import '../../../core/services/auth_service.dart';
+import '../../../core/services/feature_gate.dart';
 import '../../../core/theme/theme_service.dart';
-import '../../../core/utils/currency_formatter.dart';
-import '../../../core/utils/device_id_service.dart';
 import '../../../core/permissions/permission_keys.dart';
 import '../../../core/permissions/permission_service.dart';
 import '../../../core/widgets/adaptive_scaffold.dart';
 import '../../../core/widgets/change_password_dialog.dart';
 import '../../../core/widgets/confirm_dialog.dart';
-import '../../../core/widgets/empty_state.dart';
 import '../../../core/widgets/error_state.dart';
 import '../../../routes/app_pages.dart';
+import '../../dashboard/views/dashboard_view.dart';
+import '../../reports/views/reports_view.dart';
 import '../controllers/home_controller.dart';
-import '../../pos/views/pos_view.dart';
 
 class HomeView extends GetView<HomeController> {
   const HomeView({super.key});
@@ -24,17 +24,17 @@ class HomeView extends GetView<HomeController> {
   Widget build(BuildContext context) {
     const destinations = [
       AdaptiveScaffoldDestination(
-        label: 'Beranda',
-        icon: Icon(Icons.home_outlined),
-        selectedIcon: Icon(Icons.home),
+        label: 'Dashboard',
+        icon: Icon(Icons.dashboard_outlined),
+        selectedIcon: Icon(Icons.dashboard),
       ),
       AdaptiveScaffoldDestination(
-        label: 'Kasir',
+        label: 'Penjualan',
         icon: Icon(Icons.point_of_sale_outlined),
         selectedIcon: Icon(Icons.point_of_sale),
       ),
       AdaptiveScaffoldDestination(
-        label: 'Produk',
+        label: 'Produk & Stok',
         icon: Icon(Icons.inventory_2_outlined),
         selectedIcon: Icon(Icons.inventory_2),
       ),
@@ -56,13 +56,214 @@ class HomeView extends GetView<HomeController> {
         currentIndex: controller.selectedIndex.value,
         onDestinationSelected: controller.changeTabIndex,
         destinations: destinations,
+        railTrailing: Obx(() {
+          final hasPurchases = FeatureGate.to.isEnabled(Feature.purchases);
+          final hasOpname = FeatureGate.to.isEnabled(Feature.stockOpname);
+          return Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              IconButton(
+                tooltip: hasOpname ? 'Stock Opname' : 'Stock Opname (Perlu Semi-Premium)',
+                icon: Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    const Icon(Icons.checklist_rtl_outlined),
+                    if (!hasOpname)
+                      Positioned(
+                        right: -4,
+                        bottom: -4,
+                        child: Container(
+                          padding: const EdgeInsets.all(1),
+                          decoration: const BoxDecoration(
+                            color: Colors.amber,
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(Icons.lock, size: 10, color: Colors.black87),
+                        ),
+                      ),
+                  ],
+                ),
+                onPressed: () {
+                  if (hasOpname) {
+                    Get.toNamed(Routes.STOCK_OPNAME);
+                  } else {
+                    FeatureGate.to.requireFeature(Feature.stockOpname);
+                  }
+                },
+              ),
+              IconButton(
+                tooltip: hasPurchases ? 'Pembelian Barang' : 'Pembelian (Perlu Semi-Premium)',
+                icon: Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    const Icon(Icons.local_shipping_outlined),
+                    if (!hasPurchases)
+                      Positioned(
+                        right: -4,
+                        bottom: -4,
+                        child: Container(
+                          padding: const EdgeInsets.all(1),
+                          decoration: const BoxDecoration(
+                            color: Colors.amber,
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(Icons.lock, size: 10, color: Colors.black87),
+                        ),
+                      ),
+                  ],
+                ),
+                onPressed: () {
+                  if (hasPurchases) {
+                    Get.toNamed(Routes.PURCHASES);
+                  } else {
+                    FeatureGate.to.requireFeature(Feature.purchases);
+                  }
+                },
+              ),
+              IconButton(
+                tooltip: hasPurchases ? 'Data Supplier' : 'Supplier (Perlu Semi-Premium)',
+                icon: Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    const Icon(Icons.business_outlined),
+                    if (!hasPurchases)
+                      Positioned(
+                        right: -4,
+                        bottom: -4,
+                        child: Container(
+                          padding: const EdgeInsets.all(1),
+                          decoration: const BoxDecoration(
+                            color: Colors.amber,
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(Icons.lock, size: 10, color: Colors.black87),
+                        ),
+                      ),
+                  ],
+                ),
+                onPressed: () {
+                  if (hasPurchases) {
+                    Get.toNamed(Routes.SUPPLIERS);
+                  } else {
+                    FeatureGate.to.requireFeature(Feature.purchases);
+                  }
+                },
+              ),
+            ],
+          );
+        }),
         actions: [
+          PopupMenuButton<String>(
+            tooltip: 'Fitur Ekstra',
+            icon: Obx(() {
+              final hasPurchases = FeatureGate.to.isEnabled(Feature.purchases);
+              final hasOpname = FeatureGate.to.isEnabled(Feature.stockOpname);
+              final allUnlocked = hasPurchases && hasOpname;
+              return Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  const Icon(Icons.inventory_outlined),
+                  if (!allUnlocked)
+                    Positioned(
+                      right: -2,
+                      bottom: -2,
+                      child: Container(
+                        padding: const EdgeInsets.all(1),
+                        decoration: const BoxDecoration(
+                          color: Colors.amber,
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(Icons.lock, size: 10, color: Colors.black87),
+                      ),
+                    ),
+                ],
+              );
+            }),
+            onSelected: (val) {
+              final hasPurchases = FeatureGate.to.isEnabled(Feature.purchases);
+              final hasOpname = FeatureGate.to.isEnabled(Feature.stockOpname);
+              if (val == 'opname') {
+                if (hasOpname) {
+                  Get.toNamed(Routes.STOCK_OPNAME);
+                } else {
+                  FeatureGate.to.requireFeature(Feature.stockOpname);
+                }
+              } else if (val == 'purchases') {
+                if (hasPurchases) {
+                  Get.toNamed(Routes.PURCHASES);
+                } else {
+                  FeatureGate.to.requireFeature(Feature.purchases);
+                }
+              } else if (val == 'suppliers') {
+                if (hasPurchases) {
+                  Get.toNamed(Routes.SUPPLIERS);
+                } else {
+                  FeatureGate.to.requireFeature(Feature.purchases);
+                }
+              } else if (val == 'import_export') {
+                if (FeatureGate.to.isEnabled(Feature.importExport)) {
+                  Get.toNamed(Routes.IMPORT_EXPORT);
+                } else {
+                  FeatureGate.to.requireFeature(Feature.importExport);
+                }
+              }
+            },
+            itemBuilder: (context) {
+              final hasPurchases = FeatureGate.to.isEnabled(Feature.purchases);
+              final hasOpname = FeatureGate.to.isEnabled(Feature.stockOpname);
+              final hasImportExport = FeatureGate.to.isEnabled(Feature.importExport);
+              return [
+                PopupMenuItem(
+                  value: 'opname',
+                  child: Row(
+                    children: [
+                      const Icon(Icons.checklist_rtl_outlined, size: 18),
+                      const SizedBox(width: 8),
+                      const Expanded(child: Text('Stock Opname')),
+                      if (!hasOpname) const Icon(Icons.lock, size: 14, color: Colors.amber),
+                    ],
+                  ),
+                ),
+                PopupMenuItem(
+                  value: 'purchases',
+                  child: Row(
+                    children: [
+                      const Icon(Icons.local_shipping_outlined, size: 18),
+                      const SizedBox(width: 8),
+                      const Expanded(child: Text('Pembelian Barang')),
+                      if (!hasPurchases) const Icon(Icons.lock, size: 14, color: Colors.amber),
+                    ],
+                  ),
+                ),
+                PopupMenuItem(
+                  value: 'suppliers',
+                  child: Row(
+                    children: [
+                      const Icon(Icons.business_outlined, size: 18),
+                      const SizedBox(width: 8),
+                      const Expanded(child: Text('Data Supplier')),
+                      if (!hasPurchases) const Icon(Icons.lock, size: 14, color: Colors.amber),
+                    ],
+                  ),
+                ),
+                PopupMenuItem(
+                  value: 'import_export',
+                  child: Row(
+                    children: [
+                      const Icon(Icons.sync_alt, size: 18),
+                      const SizedBox(width: 8),
+                      const Expanded(child: Text('Import & Export Data')),
+                      if (!hasImportExport) const Icon(Icons.lock, size: 14, color: Colors.amber),
+                    ],
+                  ),
+                ),
+              ];
+            },
+          ),
           IconButton(
             tooltip: 'Ganti Tema',
             icon: Icon(
-              ThemeService.to.isDarkMode
-                  ? Icons.light_mode_outlined
-                  : Icons.dark_mode_outlined,
+              ThemeService.to.isDarkMode ? Icons.light_mode_outlined : Icons.dark_mode_outlined,
             ),
             onPressed: () => ThemeService.to.switchTheme(),
           ),
@@ -76,14 +277,10 @@ class HomeView extends GetView<HomeController> {
         body: IndexedStack(
           index: controller.selectedIndex.value,
           children: [
-            _buildHomeTab(context),
-            const PosView(),
+            const DashboardView(),
+            _buildSalesTab(context),
             _buildProductsTab(context),
-            const EmptyState(
-              title: 'Laporan Penjualan',
-              message: 'Modul laporan penjualan akan segera hadir.',
-              icon: Icons.bar_chart_outlined,
-            ),
+            const ReportsView(),
             _buildSettingsTab(context),
           ],
         ),
@@ -106,132 +303,87 @@ class HomeView extends GetView<HomeController> {
     }
   }
 
-  Widget _buildHomeTab(BuildContext context) {
-    final store = AuthService.to.currentStore.value;
-    final user = AuthService.to.currentUser.value;
+  /// Tab 1: Menu Penjualan & Kasir
+  Widget _buildSalesTab(BuildContext context) {
+    final theme = Theme.of(context);
+    final canSell = PermissionService.to.can(PermissionKeys.posSell);
+    final canViewHistory = PermissionService.to.can(PermissionKeys.posSell) ||
+        PermissionService.to.can(PermissionKeys.posVoid);
 
     return Center(
       child: SingleChildScrollView(
         padding: const EdgeInsets.all(24.0),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Text(
-              store?.name ?? 'Selamat Datang di $kAppName',
-              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                    fontWeight: FontWeight.bold,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 600),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                'Menu Penjualan',
+                style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'Operasional transaksi kasir langsung, cetak struk, dan riwayat pesanan.',
+                style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+              ),
+              const SizedBox(height: 24),
+              if (canSell) ...[
+                Card(
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    side: BorderSide(color: theme.colorScheme.outlineVariant),
                   ),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 8),
-            Text(
-              user != null ? 'Kasir: ${user.displayName}' : 'Mode Solo (Tanpa Login)',
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: Theme.of(context).colorScheme.primary,
-                    fontWeight: FontWeight.bold,
-                  ),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 24),
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(20.0),
-                child: Column(
-                  children: [
-                    const Text('Uji Coba Currency Formatter:'),
-                    const SizedBox(height: 8),
-                    Text(
-                      formatRupiah(1250000),
-                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                            fontWeight: FontWeight.bold,
-                            color: Theme.of(context).colorScheme.primary,
-                          ),
+                  child: ListTile(
+                    contentPadding: const EdgeInsets.all(16),
+                    leading: CircleAvatar(
+                      radius: 24,
+                      backgroundColor: theme.colorScheme.primaryContainer,
+                      child: Icon(Icons.point_of_sale, color: theme.colorScheme.onPrimaryContainer),
                     ),
-                    const SizedBox(height: 16),
-                    Text(
-                      'Device ID:\n${DeviceIdService.to.deviceId}',
-                      style: Theme.of(context).textTheme.bodySmall,
-                      textAlign: TextAlign.center,
+                    title: const Text('Buka Kasir (POS)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                    subtitle: const Text('Lakukan checkout penjualan, pemindaian barcode, diskon, dan pembayaran kasir.'),
+                    trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+                    onTap: () => Get.toNamed(Routes.POS),
+                  ),
+                ),
+                const SizedBox(height: 16),
+              ],
+              if (canViewHistory) ...[
+                Card(
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    side: BorderSide(color: theme.colorScheme.outlineVariant),
+                  ),
+                  child: ListTile(
+                    contentPadding: const EdgeInsets.all(16),
+                    leading: CircleAvatar(
+                      radius: 24,
+                      backgroundColor: theme.colorScheme.secondaryContainer,
+                      child: Icon(Icons.history, color: theme.colorScheme.onSecondaryContainer),
                     ),
-                  ],
-                ),
-              ),
-            ),
-            if (PermissionService.to.can(PermissionKeys.posSell) ||
-                PermissionService.to.can(PermissionKeys.posVoid)) ...[
-              const SizedBox(height: 16),
-              Card(
-                elevation: 0,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  side: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
-                ),
-                child: ListTile(
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  leading: CircleAvatar(
-                    backgroundColor: Theme.of(context).colorScheme.primaryContainer,
-                    child: Icon(Icons.history, color: Theme.of(context).colorScheme.onPrimaryContainer),
+                    title: const Text('Riwayat Penjualan & Void', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                    subtitle: const Text('Daftar transaksi harian, filter status, cetak ulang struk, dan pembatalan transaksi.'),
+                    trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+                    onTap: () => Get.toNamed(Routes.SALES_HISTORY),
                   ),
-                  title: const Text('Riwayat Penjualan', style: TextStyle(fontWeight: FontWeight.bold)),
-                  subtitle: const Text('Lihat transaksi, cetak ulang struk, dan pembatalan (void)'),
-                  trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-                  onTap: () => Get.toNamed(Routes.SALES_HISTORY),
                 ),
-              ),
+              ],
             ],
-            if (PermissionService.to.can(PermissionKeys.stockView)) ...[
-              const SizedBox(height: 12),
-              Card(
-                elevation: 0,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  side: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
-                ),
-                child: ListTile(
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  leading: CircleAvatar(
-                    backgroundColor: Theme.of(context).colorScheme.secondaryContainer,
-                    child: Icon(Icons.table_chart_outlined, color: Theme.of(context).colorScheme.onSecondaryContainer),
-                  ),
-                  title: const Text('Kartu Stok', style: TextStyle(fontWeight: FontWeight.bold)),
-                  subtitle: const Text('Lacak riwayat mutasi dan saldo berjalan stok seluruh produk'),
-                  trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-                  onTap: () => Get.toNamed(Routes.STOCK_CARD),
-                ),
-              ),
-            ],
-            if (PermissionService.to.can(PermissionKeys.auditView)) ...[
-              const SizedBox(height: 12),
-              Card(
-                elevation: 0,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  side: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
-                ),
-                child: ListTile(
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  leading: CircleAvatar(
-                    backgroundColor: Theme.of(context).colorScheme.tertiaryContainer,
-                    child: Icon(Icons.history_edu_outlined, color: Theme.of(context).colorScheme.onTertiaryContainer),
-                  ),
-                  title: const Text('Riwayat Aktivitas', style: TextStyle(fontWeight: FontWeight.bold)),
-                  subtitle: const Text('Log jejak aktivitas sistem, perubahan produk, harga, dan kasir'),
-                  trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-                  onTap: () => Get.toNamed(Routes.ACTIVITY_LOG),
-                ),
-              ),
-            ],
-          ],
+          ),
         ),
       ),
     );
   }
 
+  /// Tab 2: Menu Produk & Manajemen Stok
   Widget _buildProductsTab(BuildContext context) {
     final theme = Theme.of(context);
-    final canView = PermissionService.to.can(PermissionKeys.productView);
+    final canViewProduct = PermissionService.to.can(PermissionKeys.productView);
 
-    if (!canView) {
+    if (!canViewProduct) {
       return const ErrorState(
         title: 'Akses Ditolak',
         message: 'Anda tidak memiliki hak akses untuk melihat menu produk.',
@@ -248,17 +400,25 @@ class HomeView extends GetView<HomeController> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Text(
-                'Manajemen Produk',
+                'Produk & Stok',
                 style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 6),
               Text(
-                'Kelola kategori, satuan ukuran, dan katalog barang dagangan toko Anda.',
+                'Kelola master barang dagangan, kategori, satuan, serta alur stok toko.',
                 style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant),
               ),
-              const SizedBox(height: 24),
+              const SizedBox(height: 20),
 
-              // Card Kategori
+              // Kelompok 1: Katalog & Master Produk
+              Text(
+                'KATALOG & MASTER PRODUK',
+                style: theme.textTheme.labelMedium?.copyWith(
+                  fontWeight: FontWeight.bold,
+                  color: theme.colorScheme.primary,
+                ),
+              ),
+              const SizedBox(height: 10),
               Card(
                 elevation: 0,
                 shape: RoundedRectangleBorder(
@@ -266,65 +426,17 @@ class HomeView extends GetView<HomeController> {
                   side: BorderSide(color: theme.colorScheme.outlineVariant),
                 ),
                 child: ListTile(
-                  contentPadding: const EdgeInsets.all(16),
                   leading: CircleAvatar(
-                    radius: 24,
                     backgroundColor: theme.colorScheme.primaryContainer,
-                    child: Icon(Icons.category_outlined, color: theme.colorScheme.onPrimaryContainer),
+                    child: Icon(Icons.inventory_2_outlined, color: theme.colorScheme.onPrimaryContainer),
                   ),
-                  title: const Text('Kategori Produk', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                  subtitle: const Text('Kelola pengelompokan produk seperti Makanan, Minuman, Snack, dll.'),
-                  trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-                  onTap: () => Get.toNamed(Routes.CATEGORIES),
-                ),
-              ),
-              const SizedBox(height: 16),
-
-              // Card Satuan
-              Card(
-                elevation: 0,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  side: BorderSide(color: theme.colorScheme.outlineVariant),
-                ),
-                child: ListTile(
-                  contentPadding: const EdgeInsets.all(16),
-                  leading: CircleAvatar(
-                    radius: 24,
-                    backgroundColor: theme.colorScheme.secondaryContainer,
-                    child: Icon(Icons.straighten_outlined, color: theme.colorScheme.onSecondaryContainer),
-                  ),
-                  title: const Text('Satuan Produk (Unit)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                  subtitle: const Text('Kelola satuan ukuran produk seperti pcs, kg, gram, liter, dus, dll.'),
-                  trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-                  onTap: () => Get.toNamed(Routes.UNITS),
-                ),
-              ),
-              const SizedBox(height: 16),
-
-              // Card Katalog Produk
-              Card(
-                elevation: 0,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  side: BorderSide(color: theme.colorScheme.outlineVariant),
-                ),
-                child: ListTile(
-                  contentPadding: const EdgeInsets.all(16),
-                  leading: CircleAvatar(
-                    radius: 24,
-                    backgroundColor: theme.colorScheme.tertiaryContainer,
-                    child: Icon(Icons.inventory_2_outlined, color: theme.colorScheme.onTertiaryContainer),
-                  ),
-                  title: const Text('Katalog Produk', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                  subtitle: const Text('Kelola data produk, harga jual/beli, stok, dan barcode barang toko Anda.'),
+                  title: const Text('Katalog Produk', style: TextStyle(fontWeight: FontWeight.bold)),
+                  subtitle: const Text('Daftar barang dagangan, harga jual, harga beli, dan barcode'),
                   trailing: const Icon(Icons.arrow_forward_ios, size: 16),
                   onTap: () => Get.toNamed(Routes.PRODUCTS),
                 ),
               ),
-              const SizedBox(height: 16),
-
-              // Card Cetak Label Barcode
+              const SizedBox(height: 10),
               Card(
                 elevation: 0,
                 shape: RoundedRectangleBorder(
@@ -332,20 +444,102 @@ class HomeView extends GetView<HomeController> {
                   side: BorderSide(color: theme.colorScheme.outlineVariant),
                 ),
                 child: ListTile(
-                  contentPadding: const EdgeInsets.all(16),
                   leading: CircleAvatar(
-                    radius: 24,
+                    backgroundColor: theme.colorScheme.secondaryContainer,
+                    child: Icon(Icons.category_outlined, color: theme.colorScheme.onSecondaryContainer),
+                  ),
+                  title: const Text('Kategori Produk', style: TextStyle(fontWeight: FontWeight.bold)),
+                  subtitle: const Text('Pengelompokan barang (Makanan, Minuman, Sembako, dll.)'),
+                  trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+                  onTap: () => Get.toNamed(Routes.CATEGORIES),
+                ),
+              ),
+              const SizedBox(height: 10),
+              Card(
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  side: BorderSide(color: theme.colorScheme.outlineVariant),
+                ),
+                child: ListTile(
+                  leading: CircleAvatar(
+                    backgroundColor: theme.colorScheme.tertiaryContainer,
+                    child: Icon(Icons.straighten_outlined, color: theme.colorScheme.onTertiaryContainer),
+                  ),
+                  title: const Text('Satuan Ukuran (Unit)', style: TextStyle(fontWeight: FontWeight.bold)),
+                  subtitle: const Text('Satuan barang (pcs, kg, gram, liter, pack, botol, dll.)'),
+                  trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+                  onTap: () => Get.toNamed(Routes.UNITS),
+                ),
+              ),
+              const SizedBox(height: 10),
+              Card(
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  side: BorderSide(color: theme.colorScheme.outlineVariant),
+                ),
+                child: ListTile(
+                  leading: CircleAvatar(
                     backgroundColor: theme.colorScheme.primaryContainer,
                     child: Icon(Icons.qr_code_2, color: theme.colorScheme.onPrimaryContainer),
                   ),
-                  title: const Text('Cetak Label Barcode', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                  subtitle: const Text('Cetak stiker label barcode (Code128 / QR) produk dalam format PDF.'),
+                  title: const Text('Cetak Label Barcode', style: TextStyle(fontWeight: FontWeight.bold)),
+                  subtitle: const Text('Cetak stiker barcode (Code128 / QR) dalam format PDF'),
                   trailing: const Icon(Icons.arrow_forward_ios, size: 16),
                   onTap: () => Get.toNamed(Routes.PRODUCT_LABELS),
                 ),
               ),
+
+              const SizedBox(height: 10),
+              Card(
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  side: BorderSide(color: theme.colorScheme.outlineVariant),
+                ),
+                child: ListTile(
+                  leading: CircleAvatar(
+                    backgroundColor: theme.colorScheme.tertiaryContainer,
+                    child: Icon(Icons.sync_alt, color: theme.colorScheme.onTertiaryContainer),
+                  ),
+                  title: Row(
+                    children: [
+                      const Expanded(
+                        child: Text('Import & Export Data', style: TextStyle(fontWeight: FontWeight.bold)),
+                      ),
+                      Obx(() {
+                        final hasImportExport = FeatureGate.to.isEnabled(Feature.importExport);
+                        if (!hasImportExport) {
+                          return const Icon(Icons.lock, size: 16, color: Colors.amber);
+                        }
+                        return const SizedBox.shrink();
+                      }),
+                    ],
+                  ),
+                  subtitle: const Text('Impor & ekspor massal produk, kategori, dan supplier via CSV/Excel'),
+                  trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+                  onTap: () {
+                    if (FeatureGate.to.isEnabled(Feature.importExport)) {
+                      Get.toNamed(Routes.IMPORT_EXPORT);
+                    } else {
+                      FeatureGate.to.requireFeature(Feature.importExport);
+                    }
+                  },
+                ),
+              ),
+
+              const SizedBox(height: 24),
+              // Kelompok 2: Manajemen Stok & Inventaris
+              Text(
+                'MANAJEMEN STOK & INVENTARIS',
+                style: theme.textTheme.labelMedium?.copyWith(
+                  fontWeight: FontWeight.bold,
+                  color: theme.colorScheme.primary,
+                ),
+              ),
+              const SizedBox(height: 10),
               if (PermissionService.to.can(PermissionKeys.stockView)) ...[
-                const SizedBox(height: 16),
                 Card(
                   elevation: 0,
                   shape: RoundedRectangleBorder(
@@ -353,19 +547,122 @@ class HomeView extends GetView<HomeController> {
                     side: BorderSide(color: theme.colorScheme.outlineVariant),
                   ),
                   child: ListTile(
-                    contentPadding: const EdgeInsets.all(16),
                     leading: CircleAvatar(
-                      radius: 24,
                       backgroundColor: theme.colorScheme.secondaryContainer,
                       child: Icon(Icons.table_chart_outlined, color: theme.colorScheme.onSecondaryContainer),
                     ),
-                    title: const Text('Kartu Stok', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                    subtitle: const Text('Lacak mutasi stok barang masuk/keluar, opname, dan saldo berjalan.'),
+                    title: const Text('Kartu Stok', style: TextStyle(fontWeight: FontWeight.bold)),
+                    subtitle: const Text('Lacak riwayat mutasi masuk/keluar dan saldo berjalan stok'),
                     trailing: const Icon(Icons.arrow_forward_ios, size: 16),
                     onTap: () => Get.toNamed(Routes.STOCK_CARD),
                   ),
                 ),
+                const SizedBox(height: 10),
               ],
+              // Card Stock Opname
+              Card(
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  side: BorderSide(color: theme.colorScheme.outlineVariant),
+                ),
+                child: ListTile(
+                  leading: CircleAvatar(
+                    backgroundColor: theme.colorScheme.tertiaryContainer,
+                    child: Icon(Icons.checklist_rtl_outlined, color: theme.colorScheme.onTertiaryContainer),
+                  ),
+                  title: Row(
+                    children: [
+                      const Expanded(
+                        child: Text('Stock Opname', style: TextStyle(fontWeight: FontWeight.bold)),
+                      ),
+                      if (!FeatureGate.to.isEnabled(Feature.stockOpname)) ...[
+                        const SizedBox(width: 8),
+                        const Icon(Icons.lock, size: 16, color: Colors.amber),
+                      ],
+                    ],
+                  ),
+                  subtitle: const Text('Pencocokan stok fisik berkala dengan sistem untuk mencegah selisih'),
+                  trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+                  onTap: () {
+                    if (FeatureGate.to.isEnabled(Feature.stockOpname)) {
+                      Get.toNamed(Routes.STOCK_OPNAME);
+                    } else {
+                      FeatureGate.to.requireFeature(Feature.stockOpname);
+                    }
+                  },
+                ),
+              ),
+              const SizedBox(height: 10),
+              // Card Pembelian Barang
+              Card(
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  side: BorderSide(color: theme.colorScheme.outlineVariant),
+                ),
+                child: ListTile(
+                  leading: CircleAvatar(
+                    backgroundColor: theme.colorScheme.primaryContainer,
+                    child: Icon(Icons.local_shipping_outlined, color: theme.colorScheme.onPrimaryContainer),
+                  ),
+                  title: Row(
+                    children: [
+                      const Expanded(
+                        child: Text('Pembelian & Penerimaan Barang', style: TextStyle(fontWeight: FontWeight.bold)),
+                      ),
+                      if (!FeatureGate.to.isEnabled(Feature.purchases)) ...[
+                        const SizedBox(width: 8),
+                        const Icon(Icons.lock, size: 16, color: Colors.amber),
+                      ],
+                    ],
+                  ),
+                  subtitle: const Text('Catat faktur masuk supplier dan tambah stok barang secara otomatis'),
+                  trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+                  onTap: () {
+                    if (FeatureGate.to.isEnabled(Feature.purchases)) {
+                      Get.toNamed(Routes.PURCHASES);
+                    } else {
+                      FeatureGate.to.requireFeature(Feature.purchases);
+                    }
+                  },
+                ),
+              ),
+              const SizedBox(height: 10),
+              // Card Supplier
+              Card(
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  side: BorderSide(color: theme.colorScheme.outlineVariant),
+                ),
+                child: ListTile(
+                  leading: CircleAvatar(
+                    backgroundColor: theme.colorScheme.secondaryContainer,
+                    child: Icon(Icons.business_outlined, color: theme.colorScheme.onSecondaryContainer),
+                  ),
+                  title: Row(
+                    children: [
+                      const Expanded(
+                        child: Text('Data Supplier', style: TextStyle(fontWeight: FontWeight.bold)),
+                      ),
+                      if (!FeatureGate.to.isEnabled(Feature.purchases)) ...[
+                        const SizedBox(width: 8),
+                        const Icon(Icons.lock, size: 16, color: Colors.amber),
+                      ],
+                    ],
+                  ),
+                  subtitle: const Text('Kelola kontak dan alamat distributor / pemasok barang toko'),
+                  trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+                  onTap: () {
+                    if (FeatureGate.to.isEnabled(Feature.purchases)) {
+                      Get.toNamed(Routes.SUPPLIERS);
+                    } else {
+                      FeatureGate.to.requireFeature(Feature.purchases);
+                    }
+                  },
+                ),
+              ),
             ],
           ),
         ),
@@ -373,41 +670,63 @@ class HomeView extends GetView<HomeController> {
     );
   }
 
+  /// Tab 4: Pengaturan Aplikasi & Sistem
   Widget _buildSettingsTab(BuildContext context) {
     final store = AuthService.to.currentStore.value;
     final user = AuthService.to.currentUser.value;
     final requireLogin = AuthService.to.requireLogin;
+    final theme = Theme.of(context);
 
     return Center(
       child: SingleChildScrollView(
         padding: const EdgeInsets.all(24.0),
         child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 500),
+          constraints: const BoxConstraints(maxWidth: 550),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Text(
-                'Pengaturan Aplikasi',
-                style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+                'Pengaturan',
+                style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 6),
+              Text(
+                'Konfigurasi toko, perangkat keras pencetak & pemindai, serta keamanan akun.',
+                style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+              ),
+              const SizedBox(height: 20),
 
-              // Info Toko & Pengguna Card
+              // Kelompok 1: Profil Toko & Pengguna
+              Text(
+                'PROFIL TOKO & AKUN KASIR',
+                style: theme.textTheme.labelMedium?.copyWith(
+                  fontWeight: FontWeight.bold,
+                  color: theme.colorScheme.primary,
+                ),
+              ),
+              const SizedBox(height: 10),
               Card(
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  side: BorderSide(color: theme.colorScheme.outlineVariant),
+                ),
                 child: Padding(
                   padding: const EdgeInsets.all(16.0),
                   child: Column(
                     children: [
                       ListTile(
-                        leading: const Icon(Icons.storefront),
-                        title: Text(store?.name ?? 'Nama Toko'),
-                        subtitle: Text('Mode: ${store?.mode.toUpperCase() ?? 'SOLO'} | Login: ${requireLogin ? 'Wajib' : 'Opsional (Nonaktif)'}'),
+                        contentPadding: EdgeInsets.zero,
+                        leading: const CircleAvatar(child: Icon(Icons.storefront)),
+                        title: Text(store?.name ?? 'Nama Toko', style: const TextStyle(fontWeight: FontWeight.bold)),
+                        subtitle: Text('Mode: ${store?.mode.toUpperCase() ?? 'SOLO'} | Login: ${requireLogin ? 'Wajib' : 'Opsional'}'),
                       ),
                       if (user != null) ...[
                         const Divider(),
                         ListTile(
-                          leading: const Icon(Icons.account_circle_outlined),
-                          title: Text(user.displayName),
+                          contentPadding: EdgeInsets.zero,
+                          leading: const CircleAvatar(child: Icon(Icons.account_circle_outlined)),
+                          title: Text(user.displayName, style: const TextStyle(fontWeight: FontWeight.bold)),
                           subtitle: Text('@${user.username}'),
                         ),
                       ],
@@ -415,83 +734,96 @@ class HomeView extends GetView<HomeController> {
                   ),
                 ),
               ),
-              const SizedBox(height: 16),
-
-              // Actions
+              const SizedBox(height: 12),
               FilledButton.tonalIcon(
                 onPressed: () => ThemeService.to.switchTheme(),
                 icon: const Icon(Icons.brightness_6),
                 label: const Text('Ganti Tema (Light / Dark)'),
               ),
-              const SizedBox(height: 12),
-
-              Card(
-                elevation: 0,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  side: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
+              if (user != null && requireLogin) ...[
+                const SizedBox(height: 10),
+                OutlinedButton.icon(
+                  onPressed: () => ChangePasswordDialog.show(context),
+                  icon: const Icon(Icons.key_outlined),
+                  label: const Text('Ganti Password / PIN'),
                 ),
-                child: ListTile(
-                  leading: const Icon(Icons.qr_code_scanner),
-                  title: const Text('Uji & Diagnostik Scanner', style: TextStyle(fontWeight: FontWeight.bold)),
-                  subtitle: const Text('Tes scanner HID USB/Bluetooth dan kamera'),
-                  trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-                  onTap: () => Get.toNamed(Routes.SCANNER_TEST),
+              ],
+
+              const SizedBox(height: 24),
+              // Kelompok 2: Perangkat Keras (Hardware)
+              Text(
+                'PERANGKAT KERAS (HARDWARE)',
+                style: theme.textTheme.labelMedium?.copyWith(
+                  fontWeight: FontWeight.bold,
+                  color: theme.colorScheme.primary,
                 ),
               ),
-              const SizedBox(height: 12),
-
+              const SizedBox(height: 10),
               if (PermissionService.to.can(PermissionKeys.settingsManage)) ...[
                 Card(
                   elevation: 0,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12),
-                    side: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
+                    side: BorderSide(color: theme.colorScheme.outlineVariant),
                   ),
                   child: ListTile(
-                    leading: const Icon(Icons.print_outlined),
+                    leading: const CircleAvatar(child: Icon(Icons.print_outlined)),
                     title: const Text('Printer Thermal & Struk', style: TextStyle(fontWeight: FontWeight.bold)),
                     subtitle: const Text('Konfigurasi Bluetooth, USB Windows, LAN, atau PDF'),
                     trailing: const Icon(Icons.arrow_forward_ios, size: 16),
                     onTap: () => Get.toNamed(Routes.PRINTER_SETTINGS),
                   ),
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 10),
               ],
+              Card(
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  side: BorderSide(color: theme.colorScheme.outlineVariant),
+                ),
+                child: ListTile(
+                  leading: const CircleAvatar(child: Icon(Icons.qr_code_scanner)),
+                  title: const Text('Uji & Diagnostik Scanner', style: TextStyle(fontWeight: FontWeight.bold)),
+                  subtitle: const Text('Tes scanner HID USB/Bluetooth dan kamera Android'),
+                  trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+                  onTap: () => Get.toNamed(Routes.SCANNER_TEST),
+                ),
+              ),
 
+              const SizedBox(height: 24),
+              // Kelompok 3: Keamanan & Jejak Audit
+              Text(
+                'KEAMANAN & AUDIT SISTEM',
+                style: theme.textTheme.labelMedium?.copyWith(
+                  fontWeight: FontWeight.bold,
+                  color: theme.colorScheme.primary,
+                ),
+              ),
+              const SizedBox(height: 10),
               if (PermissionService.to.can(PermissionKeys.auditView)) ...[
                 Card(
                   elevation: 0,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12),
-                    side: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
+                    side: BorderSide(color: theme.colorScheme.outlineVariant),
                   ),
                   child: ListTile(
-                    leading: const Icon(Icons.history_edu_outlined),
+                    leading: const CircleAvatar(child: Icon(Icons.history_edu_outlined)),
                     title: const Text('Riwayat Aktivitas (Audit Log)', style: TextStyle(fontWeight: FontWeight.bold)),
                     subtitle: const Text('Lihat rekam jejak pengguna, perubahan harga produk, dan sistem'),
                     trailing: const Icon(Icons.arrow_forward_ios, size: 16),
                     onTap: () => Get.toNamed(Routes.ACTIVITY_LOG),
                   ),
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 16),
               ],
 
-              if (user != null && requireLogin) ...[
-                OutlinedButton.icon(
-                  onPressed: () => ChangePasswordDialog.show(context),
-                  icon: const Icon(Icons.key_outlined),
-                  label: const Text('Ganti Password / PIN'),
-                ),
-                const SizedBox(height: 12),
-              ],
-
-              // Tombol Logout hanya tampil bila requireLogin == true
               if (requireLogin)
                 FilledButton.icon(
                   style: FilledButton.styleFrom(
-                    backgroundColor: Theme.of(context).colorScheme.error,
-                    foregroundColor: Theme.of(context).colorScheme.onError,
+                    backgroundColor: theme.colorScheme.error,
+                    foregroundColor: theme.colorScheme.onError,
                   ),
                   onPressed: () => _handleLogout(context),
                   icon: const Icon(Icons.logout),

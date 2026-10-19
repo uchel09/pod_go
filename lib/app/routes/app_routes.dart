@@ -25,6 +25,11 @@ abstract class Routes {
   static const SALE_SUCCESS = _Paths.SALE_SUCCESS;
   static const ACTIVITY_LOG = _Paths.ACTIVITY_LOG;
   static const STOCK_CARD = _Paths.STOCK_CARD;
+  static const SUPPLIERS = _Paths.SUPPLIERS;
+  static const PURCHASE_FORM = _Paths.PURCHASE_FORM;
+  static const OPNAME_DETAIL = _Paths.OPNAME_DETAIL;
+  static const DASHBOARD = _Paths.DASHBOARD;
+  static const IMPORT_WIZARD = _Paths.IMPORT_WIZARD;
 }
 
 abstract class _Paths {
@@ -50,4 +55,9 @@ abstract class _Paths {
   static const SALE_SUCCESS = '/sale-success';
   static const ACTIVITY_LOG = '/activity-log';
   static const STOCK_CARD = '/stock-card';
+  static const SUPPLIERS = '/suppliers';
+  static const PURCHASE_FORM = '/purchase-form';
+  static const OPNAME_DETAIL = '/opname-detail';
+  static const DASHBOARD = '/dashboard';
+  static const IMPORT_WIZARD = '/import-wizard';
 }

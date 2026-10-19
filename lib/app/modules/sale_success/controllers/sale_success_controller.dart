@@ -7,6 +7,7 @@ import '../../../core/printing/receipt_data.dart';
 import '../../../core/printing/receipt_data_mapper.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../data/repositories/sale_repository.dart';
+import '../../../routes/app_pages.dart';
 import '../../pos/controllers/pos_controller.dart';
 import '../sale_success_args.dart';
 
@@ -120,10 +121,32 @@ class SaleSuccessController extends GetxController {
     }
   }
 
-  void newTransaction() {
+  bool _isNavigating = false;
+
+  /// Dipanggil saat layar sukses ditutup (baik via tombol maupun gesture back sistem).
+  /// Mengembalikan fokus scanner / input di kasir.
+  void onScreenPopped() {
     if (Get.isRegistered<PosController>()) {
       PosController.to.focusSearch();
     }
-    Get.back();
+  }
+
+  /// Menutup layar sukses dan kembali ke Kasir untuk transaksi baru.
+  void newTransaction() {
+    if (_isNavigating) return;
+    _isNavigating = true;
+    onScreenPopped();
+    if (Get.key.currentState?.canPop() ?? false) {
+      Get.back();
+    } else {
+      Get.offNamed(Routes.POS);
+    }
+  }
+
+  /// Kembali langsung ke Menu Utama (HomeView)
+  void backToHome() {
+    if (_isNavigating) return;
+    _isNavigating = true;
+    Get.offAllNamed(Routes.HOME);
   }
 }

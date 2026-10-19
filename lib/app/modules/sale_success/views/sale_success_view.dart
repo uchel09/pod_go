@@ -18,7 +18,7 @@ class SaleSuccessView extends GetView<SaleSuccessController> {
       canPop: true,
       onPopInvokedWithResult: (didPop, _) {
         if (didPop) {
-          controller.newTransaction();
+          controller.onScreenPopped();
         }
       },
       child: CallbackShortcuts(
@@ -30,8 +30,17 @@ class SaleSuccessView extends GetView<SaleSuccessController> {
           child: Scaffold(
             appBar: AppBar(
               title: const Text('Transaksi Selesai'),
-              automaticallyImplyLeading: false,
+              leading: IconButton(
+                tooltip: 'Kembali ke Kasir',
+                icon: const Icon(Icons.arrow_back),
+                onPressed: controller.newTransaction,
+              ),
               actions: [
+                IconButton(
+                  tooltip: 'Menu Utama',
+                  icon: const Icon(Icons.home_outlined),
+                  onPressed: controller.backToHome,
+                ),
                 IconButton(
                   tooltip: 'Tutup / Transaksi Baru (Esc)',
                   icon: const Icon(Icons.close),
@@ -57,6 +66,11 @@ class SaleSuccessView extends GetView<SaleSuccessController> {
                       FilledButton(
                         onPressed: controller.newTransaction,
                         child: const Text('KEMBALI KE KASIR'),
+                      ),
+                      const SizedBox(height: 8),
+                      OutlinedButton(
+                        onPressed: controller.backToHome,
+                        child: const Text('KEMBALI KE MENU UTAMA'),
                       ),
                     ],
                   ),
@@ -308,6 +322,20 @@ class SaleSuccessView extends GetView<SaleSuccessController> {
                         label: const Text(
                           'TRANSAKSI BARU (ESC)',
                           style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+
+                      // Tombol Kembali ke Menu Utama
+                      OutlinedButton.icon(
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                        ),
+                        onPressed: controller.backToHome,
+                        icon: const Icon(Icons.home_outlined),
+                        label: const Text(
+                          'KEMBALI KE MENU UTAMA',
+                          style: TextStyle(fontWeight: FontWeight.bold),
                         ),
                       ),
                     ],

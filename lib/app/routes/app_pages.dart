@@ -5,10 +5,18 @@ import '../modules/activity_log/bindings/activity_log_binding.dart';
 import '../modules/activity_log/views/activity_log_view.dart';
 import '../modules/categories/bindings/categories_binding.dart';
 import '../modules/categories/views/categories_view.dart';
+import '../modules/dashboard/bindings/dashboard_binding.dart';
+import '../modules/dashboard/views/dashboard_view.dart';
 import '../modules/home/bindings/home_binding.dart';
 import '../modules/home/views/home_view.dart';
+import '../modules/import_export/bindings/import_export_binding.dart';
+import '../modules/import_export/views/import_export_view.dart';
+import '../modules/import_wizard/bindings/import_wizard_binding.dart';
+import '../modules/import_wizard/views/import_wizard_view.dart';
 import '../modules/login/bindings/login_binding.dart';
 import '../modules/login/views/login_view.dart';
+import '../modules/opname_detail/bindings/opname_detail_binding.dart';
+import '../modules/opname_detail/views/opname_detail_view.dart';
 import '../modules/pos/bindings/pos_binding.dart';
 import '../modules/pos/views/pos_view.dart';
 import '../modules/printer_settings/bindings/printer_settings_binding.dart';
@@ -17,6 +25,12 @@ import '../modules/product_labels/bindings/product_labels_binding.dart';
 import '../modules/product_labels/views/product_labels_view.dart';
 import '../modules/products/bindings/products_binding.dart';
 import '../modules/products/views/products_view.dart';
+import '../modules/purchase_form/bindings/purchase_form_binding.dart';
+import '../modules/purchase_form/views/purchase_form_view.dart';
+import '../modules/purchases/bindings/purchases_binding.dart';
+import '../modules/purchases/views/purchases_view.dart';
+import '../modules/reports/bindings/reports_binding.dart';
+import '../modules/reports/views/reports_view.dart';
 import '../modules/sale_success/bindings/sale_success_binding.dart';
 import '../modules/sale_success/views/sale_success_view.dart';
 import '../modules/sales_history/bindings/sales_history_binding.dart';
@@ -27,6 +41,10 @@ import '../modules/setup/bindings/setup_binding.dart';
 import '../modules/setup/views/setup_view.dart';
 import '../modules/stock_card/bindings/stock_card_binding.dart';
 import '../modules/stock_card/views/stock_card_view.dart';
+import '../modules/stock_opname/bindings/stock_opname_binding.dart';
+import '../modules/stock_opname/views/stock_opname_view.dart';
+import '../modules/suppliers/bindings/suppliers_binding.dart';
+import '../modules/suppliers/views/suppliers_view.dart';
 import '../modules/units/bindings/units_binding.dart';
 import '../modules/units/views/units_view.dart';
 import '../modules/upgrade/bindings/upgrade_binding.dart';
@@ -123,11 +141,67 @@ class AppPages {
       name: _Paths.ACTIVITY_LOG,
       page: () => const ActivityLogView(),
       binding: ActivityLogBinding(),
+      middlewares: [AuthMiddleware()],
     ),
     GetPage(
       name: _Paths.STOCK_CARD,
       page: () => const StockCardView(),
       binding: StockCardBinding(),
+      middlewares: [AuthMiddleware()],
+    ),
+    GetPage(
+      name: _Paths.SUPPLIERS,
+      page: () => const SuppliersView(),
+      binding: SuppliersBinding(),
+      middlewares: [AuthMiddleware()],
+    ),
+    GetPage(
+      name: _Paths.PURCHASES,
+      page: () => const PurchasesView(),
+      binding: PurchasesBinding(),
+      middlewares: [AuthMiddleware()],
+    ),
+    GetPage(
+      name: _Paths.PURCHASE_FORM,
+      page: () => const PurchaseFormView(),
+      binding: PurchaseFormBinding(),
+      middlewares: [AuthMiddleware()],
+    ),
+    GetPage(
+      name: _Paths.STOCK_OPNAME,
+      page: () => const StockOpnameView(),
+      binding: StockOpnameBinding(),
+      middlewares: [AuthMiddleware()],
+    ),
+    GetPage(
+      name: _Paths.OPNAME_DETAIL,
+      page: () => const OpnameDetailView(),
+      binding: OpnameDetailBinding(),
+      middlewares: [AuthMiddleware()],
+    ),
+    GetPage(
+      name: _Paths.DASHBOARD,
+      page: () => const DashboardView(),
+      binding: DashboardBinding(),
+      middlewares: [AuthMiddleware()],
+    ),
+    GetPage(
+      name: _Paths.REPORTS,
+      page: () => const ReportsView(),
+      binding: ReportsBinding(),
+      middlewares: [AuthMiddleware()],
+    ),
+    GetPage(
+      name: _Paths.IMPORT_EXPORT,
+      page: () => const ImportExportView(),
+      binding: ImportExportBinding(),
+      middlewares: [AuthMiddleware()],
+    ),
+    GetPage(
+      name: _Paths.IMPORT_WIZARD,
+      page: () => const ImportWizardView(),
+      binding: ImportWizardBinding(),
+      middlewares: [AuthMiddleware()],
     ),
   ];
 }

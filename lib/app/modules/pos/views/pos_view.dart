@@ -733,6 +733,7 @@ class PosView extends GetView<PosController> {
     final rows = <_PaymentRowState>[
       _PaymentRowState(method: 'cash', amount: totalDue),
     ].obs;
+    final isProcessingPayment = false.obs;
 
     Get.dialog(
       Dialog(
@@ -923,18 +924,21 @@ class PosView extends GetView<PosController> {
                 Obx(() {
                   final totalPaid = rows.fold<int>(0, (sum, r) => sum + r.amount);
                   final isUnderpaid = totalPaid < totalDue;
-                  final isSaving = controller.isSaving.value;
+                  final isSaving = controller.isSaving.value || isProcessingPayment.value;
 
                   return FilledButton(
                     style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 14)),
                     onPressed: (isUnderpaid || isSaving)
                         ? null
                         : () async {
+                            isProcessingPayment.value = true;
                             final payments = rows.map((r) {
                               return CheckoutPayment(method: r.method, amount: r.amount);
                             }).toList();
 
-                            Get.back(); // Tutup dialog bayar
+                            if (Navigator.of(context).canPop()) {
+                              Navigator.of(context).pop(); // Tutup dialog bayar
+                            }
 
                             try {
                               await controller.processCheckout(payments: payments);
@@ -942,6 +946,8 @@ class PosView extends GetView<PosController> {
                               e.showSnackbar();
                             } catch (e) {
                               Get.snackbar('Error', 'Gagal memproses transaksi: $e');
+                            } finally {
+                              isProcessingPayment.value = false;
                             }
                           },
                     child: isSaving
