@@ -10186,6 +10186,14 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     'sales_created_at_idx',
     'CREATE INDEX sales_created_at_idx ON sales (created_at)',
   );
+  late final Index auditLogsCreatedAtIdx = Index(
+    'audit_logs_created_at_idx',
+    'CREATE INDEX audit_logs_created_at_idx ON audit_logs (created_at)',
+  );
+  late final Index auditLogsEntityIdx = Index(
+    'audit_logs_entity_idx',
+    'CREATE INDEX audit_logs_entity_idx ON audit_logs (entity, entity_id)',
+  );
   late final StoreDao storeDao = StoreDao(this as AppDatabase);
   late final UserDao userDao = UserDao(this as AppDatabase);
   late final RoleDao roleDao = RoleDao(this as AppDatabase);
@@ -10227,6 +10235,8 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     productsBarcodeIdx,
     productsNameIdx,
     salesCreatedAtIdx,
+    auditLogsCreatedAtIdx,
+    auditLogsEntityIdx,
   ];
 }
 

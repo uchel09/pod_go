@@ -76,6 +76,7 @@ class SaleDao extends DatabaseAccessor<AppDatabase> with _$SaleDaoMixin {
     DateTime? endDate,
     String? status,
     String? searchQuery,
+    int? cashierId,
   }) {
     final query = select(sales)
       ..orderBy([
@@ -92,6 +93,9 @@ class SaleDao extends DatabaseAccessor<AppDatabase> with _$SaleDaoMixin {
     }
     if (status != null && status != 'all' && status.isNotEmpty) {
       query.where((t) => t.status.equals(status));
+    }
+    if (cashierId != null) {
+      query.where((t) => t.cashierId.equals(cashierId));
     }
     if (searchQuery != null && searchQuery.trim().isNotEmpty) {
       final term = '%${searchQuery.trim()}%';
@@ -139,6 +143,7 @@ class SaleDao extends DatabaseAccessor<AppDatabase> with _$SaleDaoMixin {
     required DateTime to,
     String? status,
     String? searchQuery,
+    int? cashierId,
   }) async {
     final conditions = <String>['created_at >= ? AND created_at < ?'];
     final variables = <Variable>[Variable<DateTime>(from), Variable<DateTime>(to)];
@@ -148,6 +153,11 @@ class SaleDao extends DatabaseAccessor<AppDatabase> with _$SaleDaoMixin {
       variables.add(Variable<String>(status));
     } else if (status == null) {
       conditions.add("status = 'completed'");
+    }
+
+    if (cashierId != null) {
+      conditions.add('cashier_id = ?');
+      variables.add(Variable<int>(cashierId));
     }
 
     if (searchQuery != null && searchQuery.trim().isNotEmpty) {
@@ -186,6 +196,7 @@ class SaleDao extends DatabaseAccessor<AppDatabase> with _$SaleDaoMixin {
     DateTime? endDate,
     String? status,
     String? searchQuery,
+    int? cashierId,
   }) async {
     final conditions = <String>[];
     final variables = <Variable>[];
@@ -201,6 +212,10 @@ class SaleDao extends DatabaseAccessor<AppDatabase> with _$SaleDaoMixin {
     if (status != null && status != 'all' && status.isNotEmpty) {
       conditions.add('status = ?');
       variables.add(Variable<String>(status));
+    }
+    if (cashierId != null) {
+      conditions.add('cashier_id = ?');
+      variables.add(Variable<int>(cashierId));
     }
     if (searchQuery != null && searchQuery.trim().isNotEmpty) {
       conditions.add('invoice_no LIKE ?');

@@ -23,6 +23,8 @@ abstract class Routes {
   static const PRODUCT_LABELS = _Paths.PRODUCT_LABELS;
   static const PRINTER_SETTINGS = _Paths.PRINTER_SETTINGS;
   static const SALE_SUCCESS = _Paths.SALE_SUCCESS;
+  static const ACTIVITY_LOG = _Paths.ACTIVITY_LOG;
+  static const STOCK_CARD = _Paths.STOCK_CARD;
 }
 
 abstract class _Paths {
@@ -46,4 +48,6 @@ abstract class _Paths {
   static const PRODUCT_LABELS = '/product-labels';
   static const PRINTER_SETTINGS = '/printer-settings';
   static const SALE_SUCCESS = '/sale-success';
+  static const ACTIVITY_LOG = '/activity-log';
+  static const STOCK_CARD = '/stock-card';
 }

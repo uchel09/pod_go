@@ -6,6 +6,7 @@ abstract class PermissionKeys {
   static const posSell = 'pos.sell';
   static const posDiscount = 'pos.discount';
   static const posVoid = 'pos.void';
+  static const posViewAllSales = 'pos.view_all_sales';
 
   // Product
   static const productView = 'product.view';
@@ -45,6 +46,7 @@ abstract class PermissionKeys {
     posSell,
     posDiscount,
     posVoid,
+    posViewAllSales,
     productView,
     productEdit,
     productEditPrice,

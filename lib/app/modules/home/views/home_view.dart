@@ -179,6 +179,48 @@ class HomeView extends GetView<HomeController> {
                 ),
               ),
             ],
+            if (PermissionService.to.can(PermissionKeys.stockView)) ...[
+              const SizedBox(height: 12),
+              Card(
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  side: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
+                ),
+                child: ListTile(
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  leading: CircleAvatar(
+                    backgroundColor: Theme.of(context).colorScheme.secondaryContainer,
+                    child: Icon(Icons.table_chart_outlined, color: Theme.of(context).colorScheme.onSecondaryContainer),
+                  ),
+                  title: const Text('Kartu Stok', style: TextStyle(fontWeight: FontWeight.bold)),
+                  subtitle: const Text('Lacak riwayat mutasi dan saldo berjalan stok seluruh produk'),
+                  trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+                  onTap: () => Get.toNamed(Routes.STOCK_CARD),
+                ),
+              ),
+            ],
+            if (PermissionService.to.can(PermissionKeys.auditView)) ...[
+              const SizedBox(height: 12),
+              Card(
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  side: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
+                ),
+                child: ListTile(
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  leading: CircleAvatar(
+                    backgroundColor: Theme.of(context).colorScheme.tertiaryContainer,
+                    child: Icon(Icons.history_edu_outlined, color: Theme.of(context).colorScheme.onTertiaryContainer),
+                  ),
+                  title: const Text('Riwayat Aktivitas', style: TextStyle(fontWeight: FontWeight.bold)),
+                  subtitle: const Text('Log jejak aktivitas sistem, perubahan produk, harga, dan kasir'),
+                  trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+                  onTap: () => Get.toNamed(Routes.ACTIVITY_LOG),
+                ),
+              ),
+            ],
           ],
         ),
       ),
@@ -302,6 +344,28 @@ class HomeView extends GetView<HomeController> {
                   onTap: () => Get.toNamed(Routes.PRODUCT_LABELS),
                 ),
               ),
+              if (PermissionService.to.can(PermissionKeys.stockView)) ...[
+                const SizedBox(height: 16),
+                Card(
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    side: BorderSide(color: theme.colorScheme.outlineVariant),
+                  ),
+                  child: ListTile(
+                    contentPadding: const EdgeInsets.all(16),
+                    leading: CircleAvatar(
+                      radius: 24,
+                      backgroundColor: theme.colorScheme.secondaryContainer,
+                      child: Icon(Icons.table_chart_outlined, color: theme.colorScheme.onSecondaryContainer),
+                    ),
+                    title: const Text('Kartu Stok', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                    subtitle: const Text('Lacak mutasi stok barang masuk/keluar, opname, dan saldo berjalan.'),
+                    trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+                    onTap: () => Get.toNamed(Routes.STOCK_CARD),
+                  ),
+                ),
+              ],
             ],
           ),
         ),
@@ -390,6 +454,24 @@ class HomeView extends GetView<HomeController> {
                     subtitle: const Text('Konfigurasi Bluetooth, USB Windows, LAN, atau PDF'),
                     trailing: const Icon(Icons.arrow_forward_ios, size: 16),
                     onTap: () => Get.toNamed(Routes.PRINTER_SETTINGS),
+                  ),
+                ),
+                const SizedBox(height: 12),
+              ],
+
+              if (PermissionService.to.can(PermissionKeys.auditView)) ...[
+                Card(
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    side: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
+                  ),
+                  child: ListTile(
+                    leading: const Icon(Icons.history_edu_outlined),
+                    title: const Text('Riwayat Aktivitas (Audit Log)', style: TextStyle(fontWeight: FontWeight.bold)),
+                    subtitle: const Text('Lihat rekam jejak pengguna, perubahan harga produk, dan sistem'),
+                    trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+                    onTap: () => Get.toNamed(Routes.ACTIVITY_LOG),
                   ),
                 ),
                 const SizedBox(height: 12),

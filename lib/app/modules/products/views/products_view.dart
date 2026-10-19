@@ -423,12 +423,10 @@ class ProductsView extends GetView<ProductsController> {
                 // Stok Badge (Bisa diklik untuk kelola stok)
                 InkWell(
                   borderRadius: BorderRadius.circular(6),
-                  onTap: isLocked
-                      ? null
-                      : () => controller.showStockAdjustmentDialog(
-                            context: context,
-                            product: product,
-                          ),
+                  onTap: () => controller.showStockAdjustmentDialog(
+                    context: context,
+                    product: product,
+                  ),
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                     decoration: BoxDecoration(
@@ -507,21 +505,19 @@ class ProductsView extends GetView<ProductsController> {
                           ),
                         ),
                       IconButton(
-                        tooltip: isLocked ? 'Terkunci oleh kuota' : 'Kelola Stok (+/-)',
+                        tooltip: 'Kelola Stok (+/-)',
                         icon: Icon(
                           Icons.swap_vert_rounded,
                           size: 18,
-                          color: isLocked ? Colors.grey : theme.colorScheme.primary,
+                          color: theme.colorScheme.primary,
                         ),
                         visualDensity: VisualDensity.compact,
                         padding: const EdgeInsets.all(4),
                         constraints: const BoxConstraints(),
-                        onPressed: isLocked
-                            ? null
-                            : () => controller.showStockAdjustmentDialog(
-                                  context: context,
-                                  product: product,
-                                ),
+                        onPressed: () => controller.showStockAdjustmentDialog(
+                          context: context,
+                          product: product,
+                        ),
                       ),
                       IconButton(
                         tooltip: product.isActive ? 'Nonaktifkan Produk' : 'Aktifkan Produk',

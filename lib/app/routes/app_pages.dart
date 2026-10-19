@@ -1,6 +1,8 @@
 import 'package:get/get.dart';
 
 import '../core/middleware/auth_middleware.dart';
+import '../modules/activity_log/bindings/activity_log_binding.dart';
+import '../modules/activity_log/views/activity_log_view.dart';
 import '../modules/categories/bindings/categories_binding.dart';
 import '../modules/categories/views/categories_view.dart';
 import '../modules/home/bindings/home_binding.dart';
@@ -23,6 +25,8 @@ import '../modules/scanner_test/bindings/scanner_test_binding.dart';
 import '../modules/scanner_test/views/scanner_test_view.dart';
 import '../modules/setup/bindings/setup_binding.dart';
 import '../modules/setup/views/setup_view.dart';
+import '../modules/stock_card/bindings/stock_card_binding.dart';
+import '../modules/stock_card/views/stock_card_view.dart';
 import '../modules/units/bindings/units_binding.dart';
 import '../modules/units/views/units_view.dart';
 import '../modules/upgrade/bindings/upgrade_binding.dart';
@@ -114,6 +118,16 @@ class AppPages {
       page: () => const SalesHistoryView(),
       binding: SalesHistoryBinding(),
       middlewares: [AuthMiddleware()],
+    ),
+    GetPage(
+      name: _Paths.ACTIVITY_LOG,
+      page: () => const ActivityLogView(),
+      binding: ActivityLogBinding(),
+    ),
+    GetPage(
+      name: _Paths.STOCK_CARD,
+      page: () => const StockCardView(),
+      binding: StockCardBinding(),
     ),
   ];
 }

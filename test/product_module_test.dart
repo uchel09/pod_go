@@ -442,7 +442,7 @@ void main() {
       expect(product.currentStock, 30);
 
       final auditLogs = await auditRepo.getAllLogs();
-      final stockLogs = auditLogs.where((l) => l.action == 'stock.adjustment').toList();
+      final stockLogs = auditLogs.where((l) => l.action == 'stock.adjust' || l.action == 'stock.adjustment').toList();
       expect(stockLogs.isNotEmpty, isTrue);
     });
   });

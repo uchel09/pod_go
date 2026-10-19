@@ -11,9 +11,11 @@ import '../../../core/services/auth_service.dart';
 import '../../../data/local/app_database.dart';
 import '../../../data/local/daos/sale_dao.dart';
 import '../../../data/repositories/sale_repository.dart';
+import '../../../data/repositories/user_repository.dart';
 
 class SalesHistoryController extends GetxController {
   final SaleRepository _saleRepo = Get.find<SaleRepository>();
+  final UserRepository _userRepo = Get.find<UserRepository>();
 
   final entries = <SaleListEntry>[].obs;
   final dailySummaries = <String, DailySalesSummary>{}.obs;
@@ -28,12 +30,28 @@ class SalesHistoryController extends GetxController {
   final selectedDateFilter = 'all'.obs; // 'all' | 'today' | 'yesterday' | '7days' | 'month' | 'custom'
   final customDateRange = Rx<DateTimeRange?>(null);
   final selectedStatusFilter = 'all'.obs; // 'all' | 'completed' | 'void'
+  final selectedCashierId = Rxn<int>();
+  final cashiers = <User>[].obs;
   final searchQuery = ''.obs;
   final searchController = TextEditingController();
 
   final scrollController = ScrollController();
 
   static const int pageSize = 30;
+
+  bool get isSoloMode => AuthService.to.isSoloMode;
+
+  bool get canViewAllSales {
+    if (!Get.isRegistered<PermissionService>()) return true;
+    return PermissionService.to.can(PermissionKeys.posViewAllSales);
+  }
+
+  String get selectedCashierName {
+    final id = selectedCashierId.value;
+    if (id == null) return 'Semua Kasir';
+    final user = cashiers.firstWhereOrNull((u) => u.id == id);
+    return user?.displayName ?? 'Kasir #$id';
+  }
 
   bool get canViewHistory {
     if (!Get.isRegistered<PermissionService>()) return true;
@@ -107,11 +125,20 @@ class SalesHistoryController extends GetxController {
       return;
     }
 
+    // Muat daftar kasir jika belum dimuat dan memiliki izin view all
+    if (cashiers.isEmpty) {
+      try {
+        final users = await _userRepo.getAllUsers();
+        cashiers.assignAll(users);
+      } catch (_) {}
+    }
+
     isLoading.value = true;
     try {
       final (startDate, endDate) = getActiveDateRange();
       final status = selectedStatusFilter.value;
       final query = searchQuery.value.trim().isEmpty ? null : searchQuery.value.trim();
+      final cashierId = selectedCashierId.value;
 
       // 1. Ringkasan agregat keseluruhan filter yang aktif (untuk total di atas list)
       final agg = await _saleRepo.getAggregateSummary(
@@ -119,6 +146,7 @@ class SalesHistoryController extends GetxController {
         endDate: endDate,
         status: status,
         searchQuery: query,
+        cashierId: cashierId,
       );
       aggregateSummary.value = agg;
 
@@ -132,6 +160,7 @@ class SalesHistoryController extends GetxController {
         to: to,
         status: status,
         searchQuery: query,
+        cashierId: cashierId,
       );
       dailySummaries.assignAll({for (final s in summaries) s.day: s});
 
@@ -142,6 +171,7 @@ class SalesHistoryController extends GetxController {
         endDate: endDate,
         status: status,
         searchQuery: query,
+        cashierId: cashierId,
       );
       entries.assignAll(page);
       hasMore.value = page.length >= pageSize;
@@ -160,6 +190,7 @@ class SalesHistoryController extends GetxController {
       final (startDate, endDate) = getActiveDateRange();
       final status = selectedStatusFilter.value;
       final query = searchQuery.value.trim().isEmpty ? null : searchQuery.value.trim();
+      final cashierId = selectedCashierId.value;
 
       final lastSale = entries.last.sale;
       final cursor = SalesCursor.fromSale(lastSale);
@@ -170,6 +201,7 @@ class SalesHistoryController extends GetxController {
         endDate: endDate,
         status: status,
         searchQuery: query,
+        cashierId: cashierId,
       );
 
       entries.addAll(next);
@@ -194,6 +226,11 @@ class SalesHistoryController extends GetxController {
     loadInitialData();
   }
 
+  void setCashierFilter(int? cashierId) {
+    selectedCashierId.value = cashierId;
+    loadInitialData();
+  }
+
   void onSearchSubmitted(String query) {
     searchQuery.value = query;
     loadInitialData();
@@ -209,6 +246,7 @@ class SalesHistoryController extends GetxController {
     selectedDateFilter.value = 'all';
     customDateRange.value = null;
     selectedStatusFilter.value = 'all';
+    selectedCashierId.value = null;
     searchController.clear();
     searchQuery.value = '';
     loadInitialData();
@@ -261,11 +299,13 @@ class SalesHistoryController extends GetxController {
       final status = selectedStatusFilter.value;
       final query = searchQuery.value.trim().isEmpty ? null : searchQuery.value.trim();
 
+      final cashierId = selectedCashierId.value;
       aggregateSummary.value = await _saleRepo.getAggregateSummary(
         startDate: startDate,
         endDate: endDate,
         status: status,
         searchQuery: query,
+        cashierId: cashierId,
       );
 
       final now = DateTime.now();
@@ -276,6 +316,7 @@ class SalesHistoryController extends GetxController {
         to: to,
         status: status,
         searchQuery: query,
+        cashierId: cashierId,
       );
       dailySummaries.assignAll({for (final s in summaries) s.day: s});
 

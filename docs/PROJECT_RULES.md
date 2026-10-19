@@ -126,4 +126,9 @@ View  ──>  Controller  ──>  Repository  ──>  DAO / Local DB
 - Retur sebagian (per item) belum dibuat.
 - Fase 2 (karyawan, absensi, host-client) dan fase 3 belum dikerjakan.
 
+## 12. Aturan Jejak Audit (Audit Trail)
+- Log audit (`audit_logs`) bersifat append-only: AuditDao tidak memiliki method update maupun delete.
+- Log audit selalu ikut ter-backup saat proses backup database dibuat.
+- Fitur ekspor log aktivitas akan disediakan pada Prompt 14.
+
 

@@ -129,11 +129,37 @@ class SaleRepository {
   Future<List<Payment>> getPaymentsBySaleId(int saleId) =>
       _saleDao.getPaymentsBySaleId(saleId);
 
+  /// Menentukan ID kasir efektif:
+  /// Jika pengguna tidak memiliki izin 'pos.view_all_sales', kueri dipaksa HANYA
+  /// mengambil transaksi miliknya sendiri untuk mencegah kebocoran data.
+  int? _enforceCashierFilter(int? requestedCashierId) {
+    if (Get.isRegistered<PermissionService>()) {
+      final canViewAll = PermissionService.to.can(PermissionKeys.posViewAllSales);
+      if (!canViewAll) {
+        final currentUserId = Get.isRegistered<AuthService>()
+            ? AuthService.to.currentUser.value?.id
+            : null;
+        return currentUserId;
+      }
+    }
+    return requestedCashierId;
+  }
+
   /// Detail lengkap satu transaksi tersimpan (untuk layar sukses, detail riwayat,
   /// dan cetak ulang). Mengembalikan null bila id tidak ditemukan.
   Future<SaleDetail?> getSaleDetail(int saleId) async {
     final sale = await _saleDao.getSaleById(saleId);
     if (sale == null) return null;
+
+    if (Get.isRegistered<PermissionService>()) {
+      final canViewAll = PermissionService.to.can(PermissionKeys.posViewAllSales);
+      final currentUserId = Get.isRegistered<AuthService>()
+          ? AuthService.to.currentUser.value?.id
+          : null;
+      if (!canViewAll && currentUserId != null && sale.cashierId != currentUserId) {
+        throw const AppException('Akses ditolak: Anda hanya dapat melihat detail transaksi Anda sendiri.');
+      }
+    }
 
     final items = await _saleDao.getItemsBySaleId(saleId);
     final payments = await _saleDao.getPaymentsBySaleId(saleId);
@@ -152,7 +178,7 @@ class SaleRepository {
   }
 
   /// Satu halaman riwayat (terbaru di atas) lengkap dengan nama kasir dan metode
-  /// pembayaran. Mendukung filter tanggal, status, dan pencarian invoice.
+  /// pembayaran. Mendukung filter tanggal, status, kasir, dan pencarian invoice.
   Future<List<SaleListEntry>> getSalesPage({
     int limit = 30,
     SalesCursor? after,
@@ -160,7 +186,9 @@ class SaleRepository {
     DateTime? endDate,
     String? status,
     String? searchQuery,
+    int? cashierId,
   }) async {
+    final effectiveCashierId = _enforceCashierFilter(cashierId);
     final sales = await _saleDao.getSalesPage(
       limit: limit,
       after: after,
@@ -168,6 +196,7 @@ class SaleRepository {
       endDate: endDate,
       status: status,
       searchQuery: searchQuery,
+      cashierId: effectiveCashierId,
     );
     if (sales.isEmpty) return const <SaleListEntry>[];
 
@@ -206,12 +235,17 @@ class SaleRepository {
     required DateTime to,
     String? status,
     String? searchQuery,
-  }) => _saleDao.getDailySummaries(
-    from: from,
-    to: to,
-    status: status,
-    searchQuery: searchQuery,
-  );
+    int? cashierId,
+  }) {
+    final effectiveCashierId = _enforceCashierFilter(cashierId);
+    return _saleDao.getDailySummaries(
+      from: from,
+      to: to,
+      status: status,
+      searchQuery: searchQuery,
+      cashierId: effectiveCashierId,
+    );
+  }
 
   /// Ringkasan total agregat untuk keseluruhan filter yang aktif di atas list.
   Future<DailySalesSummary> getAggregateSummary({
@@ -219,12 +253,17 @@ class SaleRepository {
     DateTime? endDate,
     String? status,
     String? searchQuery,
-  }) => _saleDao.getAggregateSummary(
-    startDate: startDate,
-    endDate: endDate,
-    status: status,
-    searchQuery: searchQuery,
-  );
+    int? cashierId,
+  }) {
+    final effectiveCashierId = _enforceCashierFilter(cashierId);
+    return _saleDao.getAggregateSummary(
+      startDate: startDate,
+      endDate: endDate,
+      status: status,
+      searchQuery: searchQuery,
+      cashierId: effectiveCashierId,
+    );
+  }
 
   /// Membatalkan transaksi (VOID) dalam SATU database.transaction():
   /// 1. Cek izin can('pos.void') di repository layer

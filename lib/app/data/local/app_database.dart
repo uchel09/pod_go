@@ -80,7 +80,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase([QueryExecutor? e]) : super(e ?? driftDatabase(name: 'pos_me'));
 
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 2;
 
   @override
   MigrationStrategy get migration {
@@ -89,7 +89,14 @@ class AppDatabase extends _$AppDatabase {
         await m.createAll();
       },
       onUpgrade: (Migrator m, int from, int to) async {
-        // Kerangka untuk migrasi versi berikutnya
+        if (from < 2) {
+          await customStatement(
+            'CREATE INDEX IF NOT EXISTS audit_logs_created_at_idx ON audit_logs (created_at);',
+          );
+          await customStatement(
+            'CREATE INDEX IF NOT EXISTS audit_logs_entity_idx ON audit_logs (entity, entity_id);',
+          );
+        }
       },
     );
   }

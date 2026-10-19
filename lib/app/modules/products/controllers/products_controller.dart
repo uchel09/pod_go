@@ -1,6 +1,7 @@
 import 'package:drift/drift.dart' hide Column;
 import 'package:flutter/material.dart';
 import 'package:get/get.dart' hide Value;
+import 'package:intl/intl.dart';
 
 import '../../../core/features/feature_enum.dart';
 import '../../../core/permissions/permission_keys.dart';
@@ -12,6 +13,8 @@ import '../../../core/services/scanner/scanner_service.dart';
 import '../../../core/utils/app_exception.dart';
 import '../../../core/widgets/confirm_dialog.dart';
 import '../../../data/local/app_database.dart';
+import '../../../core/audit/audit_actions.dart';
+import '../../../data/repositories/audit_repository.dart';
 import '../../../data/repositories/category_repository.dart';
 import '../../../data/repositories/product_repository.dart';
 import '../../../data/repositories/stock_repository.dart';
@@ -23,6 +26,7 @@ class ProductsController extends GetxController {
   final CategoryRepository _categoryRepo = Get.find<CategoryRepository>();
   final UnitRepository _unitRepo = Get.find<UnitRepository>();
   final StockRepository _stockRepo = Get.find<StockRepository>();
+  final AuditRepository _auditRepo = Get.find<AuditRepository>();
 
   final allProducts = <Product>[].obs;
   final categories = <Category>[].obs;
@@ -40,6 +44,10 @@ class ProductsController extends GetxController {
   bool get canView => PermissionService.to.can(PermissionKeys.productView);
   bool get canViewCost => PermissionService.to.can(PermissionKeys.productViewCost);
   bool get canEditPrice => PermissionService.to.can(PermissionKeys.productEditPrice);
+  bool get canAdjustStock => PermissionService.to.can(PermissionKeys.stockAdjust);
+
+  Future<List<AuditEntry>> getProductAuditLogs(int productId) =>
+      _auditRepo.getLogsByEntity(entity: 'products', entityId: productId);
 
   int? get tierLimit => FeatureGate.to.productLimit;
 
@@ -396,7 +404,7 @@ class ProductsController extends GetxController {
 
       if (Get.isRegistered<AuditService>()) {
         AuditService.to.log(
-          action: 'stock.adjustment',
+          action: AuditActions.stockAdjust,
           entity: 'products',
           entityId: oldProduct.id,
           detail: {
@@ -405,6 +413,7 @@ class ProductsController extends GetxController {
             'newStock': oldProduct.currentStock + stockDelta,
             'qtyChange': stockDelta,
             'mode': stockActionMode,
+            'reason': 'lainnya',
             'note': appliedNote,
           },
         );
@@ -420,11 +429,22 @@ class ProductsController extends GetxController {
       }
     }
 
+    // Hitung diff perubahan kolom untuk jejak audit
+    final diff = <String, dynamic>{};
+    if (oldProduct.name != trimmedName) diff['name'] = {'old': oldProduct.name, 'new': trimmedName};
+    if (oldProduct.categoryId != categoryId) diff['category'] = {'old': getCategoryName(oldProduct.categoryId), 'new': getCategoryName(categoryId)};
+    if (oldProduct.unitId != unitId) diff['unit'] = {'old': getUnitSymbol(oldProduct.unitId), 'new': getUnitSymbol(unitId)};
+    if (oldProduct.costPrice != costPrice) diff['costPrice'] = {'old': oldProduct.costPrice, 'new': costPrice};
+    if (oldProduct.sellPrice != sellPrice) diff['sellPrice'] = {'old': oldProduct.sellPrice, 'new': sellPrice};
+    if (oldProduct.minStock != minStock) diff['minStock'] = {'old': oldProduct.minStock, 'new': minStock};
+    if (oldProduct.barcode != trimmedBarcode) diff['barcode'] = {'old': oldProduct.barcode, 'new': trimmedBarcode};
+    if (oldProduct.sku != trimmedSku) diff['sku'] = {'old': oldProduct.sku, 'new': trimmedSku};
+
     // Audit log jika terjadi perubahan harga
     if (oldProduct.sellPrice != sellPrice || oldProduct.costPrice != costPrice) {
       if (Get.isRegistered<AuditService>()) {
         AuditService.to.log(
-          action: 'product.price_change',
+          action: AuditActions.productPriceChange,
           entity: 'products',
           entityId: oldProduct.id,
           detail: {
@@ -433,18 +453,19 @@ class ProductsController extends GetxController {
             'newCostPrice': costPrice,
             'oldSellPrice': oldProduct.sellPrice,
             'newSellPrice': sellPrice,
+            'diff': diff,
           },
         );
       }
-    } else {
-      if (Get.isRegistered<AuditService>()) {
-        AuditService.to.log(
-          action: 'product.update',
-          entity: 'products',
-          entityId: oldProduct.id,
-          detail: {'name': trimmedName},
-        );
-      }
+    }
+
+    if (Get.isRegistered<AuditService>()) {
+      AuditService.to.log(
+        action: AuditActions.productUpdate,
+        entity: 'products',
+        entityId: oldProduct.id,
+        detail: {'name': trimmedName, 'diff': diff},
+      );
     }
   }
 
@@ -453,53 +474,16 @@ class ProductsController extends GetxController {
     required Product product,
     required String mode, // 'add' | 'set'
     required int qty,
+    String reason = 'lainnya', // rusak, hilang, kadaluarsa, salah_input, lainnya
     String? note,
   }) async {
-    if (!canEdit) {
-      throw const AppException('Akses ditolak: Anda tidak memiliki izin mengubah stok.');
-    }
-
-    if (isProductLocked(product)) {
-      throw const AppException(
-        'Produk ini terkunci oleh batas tier lisensi.',
-        code: 'PRODUCT_LOCKED_BY_TIER',
-      );
-    }
-
-    final int qtyChange = mode == 'add' ? qty : (qty - product.currentStock);
-    if (qtyChange == 0) return;
-
-    if (product.currentStock + qtyChange < 0) {
-      throw const AppException('Stok produk tidak boleh menjadi negatif.');
-    }
-
-    final currentUserId = AuthService.to.currentUser.value?.id;
-    final defaultNote = mode == 'add' ? 'Tambah stok produk' : 'Koreksi stok produk';
-    final appliedNote = (note != null && note.trim().isNotEmpty) ? note.trim() : defaultNote;
-
-    await _stockRepo.applyMovement(
+    await _stockRepo.adjustStock(
       productId: product.id,
-      type: 'adjustment',
-      qtyChange: qtyChange,
-      note: appliedNote,
-      createdBy: currentUserId,
+      mode: mode,
+      qty: qty,
+      reason: reason,
+      note: note,
     );
-
-    if (Get.isRegistered<AuditService>()) {
-      AuditService.to.log(
-        action: 'stock.adjustment',
-        entity: 'products',
-        entityId: product.id,
-        detail: {
-          'productName': product.name,
-          'oldStock': product.currentStock,
-          'newStock': product.currentStock + qtyChange,
-          'qtyChange': qtyChange,
-          'mode': mode,
-          'note': appliedNote,
-        },
-      );
-    }
 
     final updated = await _productRepo.getProductById(product.id);
     if (updated != null) {
@@ -729,61 +713,74 @@ class ProductsController extends GetxController {
           ),
           child: Padding(
             padding: EdgeInsets.all(isMobile ? 16.0 : 24.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                // Header
-                Row(
-                  children: [
-                    CircleAvatar(
-                      radius: isMobile ? 18 : 22,
-                      backgroundColor: Theme.of(context).colorScheme.primaryContainer,
-                      child: Icon(
-                        isEdit ? Icons.edit_note : Icons.add_box_outlined,
-                        color: Theme.of(context).colorScheme.onPrimaryContainer,
-                        size: isMobile ? 20 : 24,
+            child: DefaultTabController(
+              length: isEdit ? 2 : 1,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // Header
+                  Row(
+                    children: [
+                      CircleAvatar(
+                        radius: isMobile ? 18 : 22,
+                        backgroundColor: Theme.of(context).colorScheme.primaryContainer,
+                        child: Icon(
+                          isEdit ? Icons.edit_note : Icons.add_box_outlined,
+                          color: Theme.of(context).colorScheme.onPrimaryContainer,
+                          size: isMobile ? 20 : 24,
+                        ),
                       ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            isEdit ? 'Edit Produk' : 'Tambah Produk Baru',
-                            style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: isMobile ? 18 : 20,
-                                ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          Text(
-                            isEdit
-                                ? 'Perbarui informasi, harga & stok produk'
-                                : 'Lengkapi data master produk toko Anda',
-                            style: Theme.of(context).textTheme.bodySmall,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ],
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              isEdit ? 'Edit Produk' : 'Tambah Produk Baru',
+                              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: isMobile ? 18 : 20,
+                                  ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            Text(
+                              isEdit
+                                  ? 'Perbarui informasi, harga & stok produk'
+                                  : 'Lengkapi data master produk toko Anda',
+                              style: Theme.of(context).textTheme.bodySmall,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
+                        ),
                       ),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.close),
-                      visualDensity: VisualDensity.compact,
-                      onPressed: () => Get.back(),
+                      IconButton(
+                        icon: const Icon(Icons.close),
+                        visualDensity: VisualDensity.compact,
+                        onPressed: () => Get.back(),
+                      ),
+                    ],
+                  ),
+                  if (isEdit) ...[
+                    const SizedBox(height: 8),
+                    const TabBar(
+                      tabs: [
+                        Tab(icon: Icon(Icons.edit_note, size: 18), text: 'Info & Edit'),
+                        Tab(icon: Icon(Icons.history, size: 18), text: 'Riwayat'),
+                      ],
                     ),
                   ],
-                ),
-                const Divider(height: 20),
+                  const Divider(height: 20),
 
                 // Form Scrollable
                 Expanded(
-                  child: SingleChildScrollView(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
+                  child: Builder(
+                    builder: (context) {
+                      final formScrollable = SingleChildScrollView(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
                         // Tip Singkat Barcode
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -1231,9 +1228,21 @@ class ProductsController extends GetxController {
                         ],
                       ],
                     ),
-                  ),
-                ),
-                const SizedBox(height: 16),
+                  );
+
+                  if (isEdit) {
+                    return TabBarView(
+                      children: [
+                        formScrollable,
+                        _buildProductRiwayatTab(productToEdit),
+                      ],
+                    );
+                  }
+                  return formScrollable;
+                },
+              ),
+            ),
+            const SizedBox(height: 16),
 
                 // Action Buttons
                 Row(
@@ -1371,7 +1380,8 @@ class ProductsController extends GetxController {
           ),
         ),
       ),
-    ).then((_) {
+    ),
+  ).then((_) {
       if (Get.isRegistered<ScannerService>()) {
         ScannerService.to.unregisterConsumer('product_form');
       }
@@ -1383,26 +1393,26 @@ class ProductsController extends GetxController {
     required BuildContext context,
     required Product product,
   }) {
-    if (!canEdit) {
-      Get.snackbar('Akses Ditolak', 'Anda tidak memiliki hak akses mengubah stok.');
-      return;
-    }
-
-    if (isProductLocked(product)) {
-      Get.snackbar(
-        'Produk Terkunci',
-        'Produk ini terkunci oleh kuota tier lisensi.',
-        snackPosition: SnackPosition.BOTTOM,
-      );
+    if (!canAdjustStock) {
+      Get.snackbar('Akses Ditolak', 'Anda tidak memiliki hak akses mengubah stok (stock.adjust).');
       return;
     }
 
     final RxString mode = 'add'.obs; // 'add' | 'set'
+    final RxString selectedReason = 'rusak'.obs;
     final qtyController = TextEditingController(text: '1');
     final noteController = TextEditingController();
     final unitSymbol = getUnitSymbol(product.unitId);
     final screenSize = MediaQuery.of(context).size;
     final isMobile = screenSize.width < 600;
+
+    const reasons = [
+      {'key': 'rusak', 'label': 'Barang Rusak'},
+      {'key': 'hilang', 'label': 'Barang Hilang'},
+      {'key': 'kadaluarsa', 'label': 'Kadaluarsa'},
+      {'key': 'salah_input', 'label': 'Salah Input'},
+      {'key': 'lainnya', 'label': 'Lainnya'},
+    ];
 
     Get.dialog(
       Dialog(
@@ -1546,17 +1556,37 @@ class ProductsController extends GetxController {
                       },
                     );
                   }),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 14),
 
-                  // Catatan Mutasi
-                  TextField(
-                    controller: noteController,
-                    decoration: const InputDecoration(
-                      labelText: 'Catatan Mutasi (Opsional)',
-                      hintText: 'Misal: Masuk dari Supplier / Hasil Opname',
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
+                  // Alasan Penyesuaian (Wajib Pilih)
+                  const Text('Alasan Penyesuaian *', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+                  const SizedBox(height: 6),
+                  Obx(() => Wrap(
+                        spacing: 6,
+                        runSpacing: 4,
+                        children: reasons.map((r) {
+                          final isSelected = selectedReason.value == r['key'];
+                          return ChoiceChip(
+                            label: Text(r['label']!, style: const TextStyle(fontSize: 12)),
+                            selected: isSelected,
+                            onSelected: (_) => selectedReason.value = r['key']!,
+                          );
+                        }).toList(),
+                      )),
+                  const SizedBox(height: 14),
+
+                  // Catatan Mutasi (Wajib jika alasan 'lainnya', minimal 5 karakter)
+                  Obx(() {
+                    final isLainnya = selectedReason.value == 'lainnya';
+                    return TextField(
+                      controller: noteController,
+                      decoration: InputDecoration(
+                        labelText: isLainnya ? 'Catatan Mutasi (Wajib, min 5 karakter) *' : 'Catatan Mutasi (Opsional)',
+                        hintText: isLainnya ? 'Jelaskan alasan penyesuaian...' : 'Misal: Masuk dari Supplier / Hasil Opname',
+                        border: const OutlineInputBorder(),
+                      ),
+                    );
+                  }),
                   const SizedBox(height: 20),
 
                   // Tombol Aksi
@@ -1583,12 +1613,21 @@ class ProductsController extends GetxController {
                             Get.snackbar('Validasi Gagal', 'Stok baru tidak boleh negatif');
                             return;
                           }
+                          if (mode.value == 'set' && val == product.currentStock) {
+                            Get.snackbar('Validasi Gagal', 'Tidak ada perubahan stok.');
+                            return;
+                          }
+                          if (selectedReason.value == 'lainnya' && noteController.text.trim().length < 5) {
+                            Get.snackbar('Validasi Gagal', 'Untuk alasan "Lainnya", catatan wajib diisi minimal 5 karakter.');
+                            return;
+                          }
 
                           try {
                             await adjustStock(
                               product: product,
                               mode: mode.value,
                               qty: val,
+                              reason: selectedReason.value,
                               note: noteController.text.trim(),
                             );
                             Get.back();
@@ -1612,6 +1651,75 @@ class ProductsController extends GetxController {
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildProductRiwayatTab(Product product) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          OutlinedButton.icon(
+            icon: const Icon(Icons.table_chart_outlined, size: 18),
+            label: const Text('Buka Kartu Stok'),
+            onPressed: () {
+              Get.back();
+              Get.toNamed(Routes.STOCK_CARD, arguments: {'productId': product.id});
+            },
+          ),
+          const SizedBox(height: 12),
+          FutureBuilder<List<AuditEntry>>(
+            future: getProductAuditLogs(product.id),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Padding(
+                  padding: EdgeInsets.all(24.0),
+                  child: Center(child: CircularProgressIndicator()),
+                );
+              }
+              final logs = snapshot.data ?? [];
+              if (logs.isEmpty) {
+                return const Padding(
+                  padding: EdgeInsets.all(24.0),
+                  child: Center(
+                    child: Text(
+                      'Belum ada riwayat aktivitas untuk produk ini.',
+                      style: TextStyle(color: Colors.grey, fontSize: 13),
+                    ),
+                  ),
+                );
+              }
+              return ListView.separated(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: logs.length,
+                separatorBuilder: (_, index) => const Divider(height: 1),
+                itemBuilder: (context, idx) {
+                  final log = logs[idx];
+                  final sentence = AuditActions.formatHumanSentence(
+                    action: log.action,
+                    userName: log.userName,
+                    detail: log.detail,
+                  );
+                  final timeStr = DateFormat('dd/MM/yyyy HH:mm').format(log.createdAt.toLocal());
+                  return ListTile(
+                    dense: true,
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                    leading: CircleAvatar(
+                      radius: 14,
+                      backgroundColor: Theme.of(context).colorScheme.primaryContainer,
+                      child: Icon(Icons.history, size: 16, color: Theme.of(context).colorScheme.primary),
+                    ),
+                    title: Text(sentence, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500)),
+                    subtitle: Text(timeStr, style: const TextStyle(fontSize: 10, color: Colors.grey)),
+                  );
+                },
+              );
+            },
+          ),
+        ],
       ),
     );
   }
