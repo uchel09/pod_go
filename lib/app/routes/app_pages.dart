@@ -3,10 +3,16 @@ import 'package:get/get.dart';
 import '../core/middleware/auth_middleware.dart';
 import '../modules/activity_log/bindings/activity_log_binding.dart';
 import '../modules/activity_log/views/activity_log_view.dart';
+import '../modules/backup/bindings/backup_binding.dart';
+import '../modules/backup/views/backup_view.dart';
 import '../modules/categories/bindings/categories_binding.dart';
 import '../modules/categories/views/categories_view.dart';
+import '../modules/checkout_simulation/bindings/checkout_simulation_binding.dart';
+import '../modules/checkout_simulation/views/checkout_simulation_view.dart';
 import '../modules/dashboard/bindings/dashboard_binding.dart';
 import '../modules/dashboard/views/dashboard_view.dart';
+import '../modules/developer_panel/bindings/developer_panel_binding.dart';
+import '../modules/developer_panel/views/developer_panel_view.dart';
 import '../modules/home/bindings/home_binding.dart';
 import '../modules/home/views/home_view.dart';
 import '../modules/import_export/bindings/import_export_binding.dart';
@@ -201,6 +207,24 @@ class AppPages {
       name: _Paths.IMPORT_WIZARD,
       page: () => const ImportWizardView(),
       binding: ImportWizardBinding(),
+      middlewares: [AuthMiddleware()],
+    ),
+    GetPage(
+      name: _Paths.BACKUP,
+      page: () => const BackupView(),
+      binding: BackupBinding(),
+      middlewares: [AuthMiddleware()],
+    ),
+    GetPage(
+      name: _Paths.CHECKOUT_SIMULATION,
+      page: () => const CheckoutSimulationView(),
+      binding: CheckoutSimulationBinding(),
+      middlewares: [AuthMiddleware()],
+    ),
+    GetPage(
+      name: _Paths.DEVELOPER_PANEL,
+      page: () => const DeveloperPanelView(),
+      binding: DeveloperPanelBinding(),
       middlewares: [AuthMiddleware()],
     ),
   ];

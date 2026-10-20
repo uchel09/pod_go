@@ -1,8 +1,10 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
 import '../../../core/config/app_config.dart';
 import '../../../core/features/feature_enum.dart';
+import '../../../core/features/tier_enum.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/services/feature_gate.dart';
 import '../../../core/theme/theme_service.dart';
@@ -14,6 +16,7 @@ import '../../../core/widgets/confirm_dialog.dart';
 import '../../../core/widgets/error_state.dart';
 import '../../../routes/app_pages.dart';
 import '../../dashboard/views/dashboard_view.dart';
+import '../../developer_panel/controllers/developer_panel_controller.dart';
 import '../../reports/views/reports_view.dart';
 import '../controllers/home_controller.dart';
 
@@ -206,12 +209,15 @@ class HomeView extends GetView<HomeController> {
                 } else {
                   FeatureGate.to.requireFeature(Feature.importExport);
                 }
+              } else if (val == 'backup') {
+                Get.toNamed(Routes.BACKUP);
               }
             },
             itemBuilder: (context) {
               final hasPurchases = FeatureGate.to.isEnabled(Feature.purchases);
               final hasOpname = FeatureGate.to.isEnabled(Feature.stockOpname);
               final hasImportExport = FeatureGate.to.isEnabled(Feature.importExport);
+              final canBackup = PermissionService.to.can(PermissionKeys.backupManage);
               return [
                 PopupMenuItem(
                   value: 'opname',
@@ -257,6 +263,17 @@ class HomeView extends GetView<HomeController> {
                     ],
                   ),
                 ),
+                if (canBackup)
+                  const PopupMenuItem(
+                    value: 'backup',
+                    child: Row(
+                      children: [
+                        Icon(Icons.backup_outlined, size: 18),
+                        SizedBox(width: 8),
+                        Expanded(child: Text('Backup Data')),
+                      ],
+                    ),
+                  ),
               ];
             },
           ),
@@ -819,7 +836,125 @@ class HomeView extends GetView<HomeController> {
                 const SizedBox(height: 16),
               ],
 
-              if (requireLogin)
+              if (PermissionService.to.can(PermissionKeys.backupManage)) ...[
+                Text(
+                  'PENCADANGAN DATA (BACKUP)',
+                  style: theme.textTheme.labelMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    color: theme.colorScheme.primary,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Card(
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    side: BorderSide(color: theme.colorScheme.outlineVariant),
+                  ),
+                  child: ListTile(
+                    leading: const CircleAvatar(child: Icon(Icons.backup_outlined)),
+                    title: const Text('Backup Data Usaha', style: TextStyle(fontWeight: FontWeight.bold)),
+                    subtitle: const Text('Cadangkan seluruh database toko ke berkas ZIP'),
+                    trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+                    onTap: () => Get.toNamed(Routes.BACKUP),
+                  ),
+                ),
+                const SizedBox(height: 16),
+              ],
+
+              // Kelompok: Paket & Lisensi Toko
+              Text(
+                'PAKET & LISENSI FITUR',
+                style: theme.textTheme.labelMedium?.copyWith(
+                  fontWeight: FontWeight.bold,
+                  color: theme.colorScheme.primary,
+                ),
+              ),
+              const SizedBox(height: 10),
+              Obx(() {
+                final tier = FeatureGate.to.tier.value;
+                return Card(
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    side: BorderSide(color: theme.colorScheme.outlineVariant),
+                  ),
+                  child: ListTile(
+                    leading: CircleAvatar(
+                      backgroundColor: tier == Tier.premium
+                          ? Colors.purple.shade100
+                          : (tier == Tier.semi
+                              ? Colors.blue.shade100
+                              : Colors.grey.shade200),
+                      child: Icon(
+                        tier == Tier.premium
+                            ? Icons.workspace_premium
+                            : (tier == Tier.semi
+                                ? Icons.verified
+                                : Icons.storefront),
+                        color: tier == Tier.premium
+                            ? Colors.purple.shade800
+                            : (tier == Tier.semi
+                                ? Colors.blue.shade800
+                                : Colors.grey.shade800),
+                      ),
+                    ),
+                    title: const Text('Paket & Upgrade Aplikasi',
+                        style: TextStyle(fontWeight: FontWeight.bold)),
+                    subtitle: Text('Paket aktif saat ini: ${tier.displayName}'),
+                    trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+                    onTap: () => Get.toNamed(Routes.UPGRADE),
+                  ),
+                );
+              }),
+              const SizedBox(height: 16),
+
+              // Kelompok: Developer Panel (Mode Simulasi)
+              Obx(() {
+                final unlocked = DeveloperPanelController.isUnlocked.value;
+                final isSim = AppConfig.simulationMode;
+                final isDevAllowed = kDebugMode || unlocked;
+                if (!isSim || !isDevAllowed) return const SizedBox.shrink();
+
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(
+                      'PENGEMBANG (DEVELOPER)',
+                      style: theme.textTheme.labelMedium?.copyWith(
+                        fontWeight: FontWeight.bold,
+                        color: Colors.amber.shade900,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Card(
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        side: BorderSide(color: Colors.amber.shade400),
+                      ),
+                      color: Colors.amber.shade50.withValues(alpha: 0.5),
+                      child: ListTile(
+                        leading: CircleAvatar(
+                          backgroundColor: Colors.amber.shade100,
+                          child: Icon(Icons.developer_mode,
+                              color: Colors.amber.shade900),
+                        ),
+                        title: const Text('Panel Developer (Simulasi)',
+                            style: TextStyle(fontWeight: FontWeight.bold)),
+                        subtitle: const Text(
+                            'Uji tier, simulasi gagal bayar, kadaluwarsa & data dummy'),
+                        trailing:
+                            const Icon(Icons.arrow_forward_ios, size: 16),
+                        onTap: () => Get.toNamed(Routes.DEVELOPER_PANEL),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                  ],
+                );
+              }),
+
+              if (requireLogin) ...[
                 FilledButton.icon(
                   style: FilledButton.styleFrom(
                     backgroundColor: theme.colorScheme.error,
@@ -829,6 +964,41 @@ class HomeView extends GetView<HomeController> {
                   icon: const Icon(Icons.logout),
                   label: const Text('Keluar dari Akun Kasir'),
                 ),
+                const SizedBox(height: 16),
+              ],
+
+              // Versi Aplikasi dengan 7-tap detector untuk Developer Mode
+              Center(
+                child: InkWell(
+                  onTap: () => DeveloperPanelController.registerVersionTap(),
+                  borderRadius: BorderRadius.circular(8),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                        vertical: 8.0, horizontal: 16.0),
+                    child: Column(
+                      children: [
+                        Text(
+                          '$kAppName v1.0.0',
+                          textAlign: TextAlign.center,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        if (AppConfig.simulationMode)
+                          Text(
+                            'Mode Simulasi Aktif (Ketuk 7x untuk Developer)',
+                            textAlign: TextAlign.center,
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: Colors.amber.shade800,
+                              fontSize: 11,
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
             ],
           ),
         ),

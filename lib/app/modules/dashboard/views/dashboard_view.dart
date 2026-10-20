@@ -68,6 +68,10 @@ class DashboardView extends GetView<DashboardController> {
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
                         _buildHeader(context, isDesktop),
+                        if (controller.shouldShowBackupReminder) ...[
+                          const SizedBox(height: 16),
+                          _buildBackupReminderBanner(context),
+                        ],
                         const SizedBox(height: 20),
                         _buildSummaryMetrics(context, data, isDesktop),
                         const SizedBox(height: 20),
@@ -209,6 +213,63 @@ class DashboardView extends GetView<DashboardController> {
         children: cards,
       );
     }
+  }
+
+  Widget _buildBackupReminderBanner(BuildContext context) {
+    final isNever = controller.lastBackupInfo.value == null;
+    final days = controller.backupDaysAgo;
+
+    return Card(
+      elevation: 0,
+      color: Colors.amber.shade50,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(14),
+        side: BorderSide(color: Colors.amber.shade300),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
+        child: Row(
+          children: [
+            Icon(Icons.warning_amber_rounded, color: Colors.amber.shade900, size: 28),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    isNever
+                        ? 'Data Anda belum pernah dibackup!'
+                        : 'Data Anda belum dibackup selama $days hari.',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: Colors.amber.shade900,
+                      fontSize: 14,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    'Lakukan backup untuk mencegah kehilangan data.',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.amber.shade900,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 12),
+            FilledButton.tonal(
+              style: FilledButton.styleFrom(
+                backgroundColor: Colors.amber.shade200,
+                foregroundColor: Colors.amber.shade900,
+              ),
+              onPressed: () => Get.toNamed(Routes.BACKUP),
+              child: const Text('Backup Sekarang', style: TextStyle(fontWeight: FontWeight.bold)),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Widget _buildUpgradeBanner(BuildContext context) {

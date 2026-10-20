@@ -3,6 +3,7 @@ import 'package:get/get.dart';
 import '../../data/local/app_database.dart';
 import '../../data/local/daos/report_dao.dart';
 import '../../data/repositories/audit_repository.dart';
+import '../../data/repositories/backup_repository.dart';
 import '../../data/repositories/category_repository.dart';
 import '../../data/repositories/export_repository.dart';
 import '../../data/repositories/import_repository.dart';
@@ -19,6 +20,7 @@ import '../../data/repositories/store_repository.dart';
 import '../../data/repositories/supplier_repository.dart';
 import '../../data/repositories/unit_repository.dart';
 import '../../data/repositories/user_repository.dart';
+import '../../data/services/payment_gateway.dart';
 import '../features/entitlement_provider.dart';
 import '../permissions/permission_service.dart';
 import '../services/audit_service.dart';
@@ -103,11 +105,25 @@ class InitialBinding extends Bindings {
       ),
       fenix: true,
     );
+    Get.lazyPut<BackupRepository>(
+      () => BackupRepository(
+        db: db,
+        storeDao: db.storeDao,
+        settingsDao: db.settingsDao,
+      ),
+      fenix: true,
+    );
     Get.lazyPut<PosController>(() => PosController(), fenix: true);
 
     // Entitlement Provider (dapat ditukar implementasinya dalam satu baris)
     Get.lazyPut<EntitlementProvider>(
       () => SimulatedEntitlementProvider(Get.find<LicenseRepository>()),
+      fenix: true,
+    );
+
+    // Payment Gateway (Simulasi lokal, dapat ditukar dengan gateway riil)
+    Get.lazyPut<PaymentGateway>(
+      () => SimulatedPaymentGateway(Get.find<LicenseRepository>()),
       fenix: true,
     );
 

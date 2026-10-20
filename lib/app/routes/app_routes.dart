@@ -30,6 +30,8 @@ abstract class Routes {
   static const OPNAME_DETAIL = _Paths.OPNAME_DETAIL;
   static const DASHBOARD = _Paths.DASHBOARD;
   static const IMPORT_WIZARD = _Paths.IMPORT_WIZARD;
+  static const CHECKOUT_SIMULATION = _Paths.CHECKOUT_SIMULATION;
+  static const DEVELOPER_PANEL = _Paths.DEVELOPER_PANEL;
 }
 
 abstract class _Paths {
@@ -60,4 +62,6 @@ abstract class _Paths {
   static const OPNAME_DETAIL = '/opname-detail';
   static const DASHBOARD = '/dashboard';
   static const IMPORT_WIZARD = '/import-wizard';
+  static const CHECKOUT_SIMULATION = '/checkout-simulation';
+  static const DEVELOPER_PANEL = '/developer-panel';
 }
