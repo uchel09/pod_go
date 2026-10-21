@@ -1,5 +1,6 @@
 import 'package:drift/drift.dart' hide Column;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:get/get.dart' hide Value;
 import 'package:intl/intl.dart';
 
@@ -954,6 +955,7 @@ class ProductsController extends GetxController {
                           final sellPriceField = TextField(
                             controller: sellPriceController,
                             keyboardType: TextInputType.number,
+                            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                             decoration: const InputDecoration(
                               labelText: 'Harga Jual (Rp) *',
                               hintText: 'Misal: 15000',
@@ -965,6 +967,7 @@ class ProductsController extends GetxController {
                           final costPriceField = TextField(
                             controller: costPriceController,
                             keyboardType: TextInputType.number,
+                            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                             decoration: const InputDecoration(
                               labelText: 'Harga Beli (Rp)',
                               hintText: 'Misal: 10000',
@@ -1006,6 +1009,7 @@ class ProductsController extends GetxController {
                             final initialStockField = TextField(
                               controller: initialStockController,
                               keyboardType: TextInputType.number,
+                              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                               decoration: const InputDecoration(
                                 labelText: 'Stok Awal',
                                 hintText: '0',
@@ -1016,6 +1020,7 @@ class ProductsController extends GetxController {
                             final minStockField = TextField(
                               controller: minStockController,
                               keyboardType: TextInputType.number,
+                              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                               decoration: const InputDecoration(
                                 labelText: 'Stok Minimum',
                                 hintText: '5',
@@ -1127,6 +1132,7 @@ class ProductsController extends GetxController {
                                         TextField(
                                           controller: addStockController,
                                           keyboardType: TextInputType.number,
+                                          inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                                           decoration: InputDecoration(
                                             labelText: 'Jumlah Tambah Stok (+)',
                                             hintText: 'Misal: 10',
@@ -1168,6 +1174,7 @@ class ProductsController extends GetxController {
                                         TextField(
                                           controller: setStockController,
                                           keyboardType: TextInputType.number,
+                                          inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                                           decoration: InputDecoration(
                                             labelText: 'Nilai Total Stok Baru (=)',
                                             hintText: 'Misal: 25',
@@ -1215,6 +1222,7 @@ class ProductsController extends GetxController {
                                 TextField(
                                   controller: minStockController,
                                   keyboardType: TextInputType.number,
+                                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                                   decoration: InputDecoration(
                                     labelText: 'Stok Minimum (Peringatan Stok Menipis)',
                                     hintText: '5',
@@ -1518,6 +1526,7 @@ class ProductsController extends GetxController {
                   Obx(() => TextField(
                         controller: qtyController,
                         keyboardType: TextInputType.number,
+                        inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                         autofocus: true,
                         decoration: InputDecoration(
                           labelText: mode.value == 'add' ? 'Jumlah Tambahan Stok (+)' : 'Total Stok Baru (=)',

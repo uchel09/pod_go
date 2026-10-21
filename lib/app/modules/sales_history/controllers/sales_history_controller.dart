@@ -10,16 +10,24 @@ import '../../../core/printing/receipt_data_mapper.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../data/local/app_database.dart';
 import '../../../data/local/daos/sale_dao.dart';
+import '../../../data/local/daos/sale_return_dao.dart';
 import '../../../data/repositories/sale_repository.dart';
+import '../../../data/repositories/sale_return_repository.dart';
 import '../../../data/repositories/user_repository.dart';
 
 class SalesHistoryController extends GetxController {
   final SaleRepository _saleRepo = Get.find<SaleRepository>();
   final UserRepository _userRepo = Get.find<UserRepository>();
+  final SaleReturnRepository _saleReturnRepo = Get.find<SaleReturnRepository>();
 
   final entries = <SaleListEntry>[].obs;
   final dailySummaries = <String, DailySalesSummary>{}.obs;
   final aggregateSummary = Rx<DailySalesSummary?>(null);
+
+  // Tab 0: Transaksi Penjualan, Tab 1: Riwayat Retur
+  final currentTab = 0.obs;
+  final returnEntries = <SaleReturnEntry>[].obs;
+  final isLoadingReturns = false.obs;
 
   final isLoading = true.obs;
   final isLoadingMore = false.obs;
@@ -62,6 +70,11 @@ class SalesHistoryController extends GetxController {
   bool get canVoid {
     if (!Get.isRegistered<PermissionService>()) return true;
     return PermissionService.to.can(PermissionKeys.posVoid);
+  }
+
+  bool get canReturn {
+    if (!Get.isRegistered<PermissionService>()) return true;
+    return PermissionService.to.can(PermissionKeys.posReturn);
   }
 
   @override
@@ -372,6 +385,43 @@ class SalesHistoryController extends GetxController {
       await ReceiptActions.savePdf(receipt);
     } catch (e) {
       Get.snackbar('PDF', 'Gagal menyimpan / membagikan PDF: $e', snackPosition: SnackPosition.BOTTOM);
+    }
+  }
+
+  // --- Operasi Retur Penjualan ---
+
+  Future<List<SaleReturn>> getReturnsForSale(int saleId) =>
+      _saleReturnRepo.getReturnsBySaleId(saleId);
+
+  Future<SaleReturnDetail?> getReturnDetail(int returnId) =>
+      _saleReturnRepo.getReturnDetail(returnId);
+
+  ReceiptData buildReturnReceipt(SaleReturnDetail detail) {
+    return buildReturnReceiptData(
+      store: AuthService.to.currentStore.value,
+      cashierName: detail.cashierName,
+      saleReturn: detail.saleReturn,
+      items: detail.items,
+      originInvoiceNo: detail.invoiceNo,
+    );
+  }
+
+  Future<void> fetchReturns() async {
+    isLoadingReturns.value = true;
+    try {
+      final (startDate, endDate) = getActiveDateRange();
+      final query = searchQuery.value.trim().isEmpty ? null : searchQuery.value.trim();
+      final list = await _saleReturnRepo.getReturnsPage(
+        limit: 100,
+        startDate: startDate,
+        endDate: endDate,
+        searchQuery: query,
+      );
+      returnEntries.assignAll(list);
+    } catch (e) {
+      Get.snackbar('Error', 'Gagal memuat riwayat retur: $e', snackPosition: SnackPosition.BOTTOM);
+    } finally {
+      isLoadingReturns.value = false;
     }
   }
 }

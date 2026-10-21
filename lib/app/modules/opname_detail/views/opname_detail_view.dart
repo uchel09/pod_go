@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/utils/currency_formatter.dart';
+import '../../../core/widgets/confirm_dialog.dart';
 import '../../../core/widgets/empty_state.dart';
 import '../../../core/widgets/loading_indicator.dart';
 import '../../../data/local/app_database.dart';
@@ -34,8 +36,25 @@ class OpnameDetailView extends GetView<OpnameDetailController> {
 
       final isDraft = entry.isDraft;
 
-      return Scaffold(
-        appBar: AppBar(
+      return PopScope(
+        canPop: !isDraft,
+        onPopInvokedWithResult: (didPop, result) async {
+          if (didPop) return;
+          final leave = await ConfirmDialog.show(
+            context: context,
+            title: 'Sesi Opname Belum Selesai',
+            message:
+                'Sesi opname ini masih berstatus draft. Apakah Anda yakin ingin keluar?',
+            confirmText: 'Keluar',
+            cancelText: 'Lanjutkan Opname',
+            isDestructive: true,
+          );
+          if (leave && context.mounted) {
+            Navigator.of(context).pop();
+          }
+        },
+        child: Scaffold(
+          appBar: AppBar(
           title: Text(entry.code),
           actions: [
             if (isDraft) ...[
@@ -125,9 +144,10 @@ class OpnameDetailView extends GetView<OpnameDetailController> {
             ],
           ),
         ),
-      );
-    });
-  }
+      ),
+    );
+  });
+}
 
   Widget _buildSummaryHeader(ThemeData theme, OpnameDetailEntry entry, bool isMobile) {
     final dateStr = DateFormat('dd MMM yyyy, HH:mm', 'id_ID').format(entry.date);
@@ -860,6 +880,7 @@ class OpnameDetailView extends GetView<OpnameDetailController> {
             TextField(
               controller: textController,
               keyboardType: TextInputType.number,
+              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
               autofocus: true,
               decoration: const InputDecoration(
                 labelText: 'Jumlah Hitungan Fisik',

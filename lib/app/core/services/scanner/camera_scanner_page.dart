@@ -15,7 +15,7 @@ class CameraScannerPage extends StatefulWidget {
 class _CameraScannerPageState extends State<CameraScannerPage> {
   MobileScannerController? _controller;
   bool _isDisposed = false;
-  bool _hasDetected = false;
+  bool _isHandled = false;
 
   bool get _isAndroid => !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
 
@@ -49,14 +49,20 @@ class _CameraScannerPageState extends State<CameraScannerPage> {
     super.dispose();
   }
 
-  void _onDetect(BarcodeCapture capture) {
-    if (_hasDetected || _isDisposed) return;
+  Future<void> _onDetect(BarcodeCapture capture) async {
+    if (_isHandled || _isDisposed) return;
 
     for (final barcode in capture.barcodes) {
       final code = barcode.rawValue ?? barcode.displayValue;
       if (code != null && code.trim().isNotEmpty) {
-        _hasDetected = true;
-        Get.back(result: code.trim());
+        _isHandled = true;
+        // Hentikan controller kamera segera untuk mencegah deteksi ganda di frame berikutnya
+        try {
+          await _controller?.stop();
+        } catch (_) {}
+        if (mounted) {
+          Get.back(result: code.trim());
+        }
         break;
       }
     }

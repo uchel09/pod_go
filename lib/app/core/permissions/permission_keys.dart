@@ -6,6 +6,7 @@ abstract class PermissionKeys {
   static const posSell = 'pos.sell';
   static const posDiscount = 'pos.discount';
   static const posVoid = 'pos.void';
+  static const posReturn = 'pos.return';
   static const posViewAllSales = 'pos.view_all_sales';
 
   // Product
@@ -31,6 +32,10 @@ abstract class PermissionKeys {
   // Backup
   static const backupManage = 'backup.manage';
 
+  // Expenses
+  static const expenseView = 'expense.view';
+  static const expenseManage = 'expense.manage';
+
   // Settings & License
   static const settingsManage = 'settings.manage';
   static const licenseManage = 'license.manage';
@@ -46,6 +51,7 @@ abstract class PermissionKeys {
     posSell,
     posDiscount,
     posVoid,
+    posReturn,
     posViewAllSales,
     productView,
     productEdit,
@@ -60,6 +66,8 @@ abstract class PermissionKeys {
     reportExport,
     importManage,
     backupManage,
+    expenseView,
+    expenseManage,
     settingsManage,
     licenseManage,
     employeeManage,

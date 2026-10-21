@@ -14,7 +14,14 @@ class StoreDao extends DatabaseAccessor<AppDatabase> with _$StoreDaoMixin {
 
   Future<int> insertStore(StoresCompanion store) => into(stores).insert(store);
 
-  Future<bool> updateStore(StoresCompanion store) => update(stores).replace(store);
+  Future<bool> updateStore(StoresCompanion store) {
+    if (store.id.present) {
+      return (update(stores)..where((t) => t.id.equals(store.id.value)))
+          .write(store)
+          .then((rows) => rows > 0);
+    }
+    return update(stores).replace(store);
+  }
 
   Future<int> deleteStore(int id) => (delete(stores)..where((t) => t.id.equals(id))).go();
 }

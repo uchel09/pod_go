@@ -5,6 +5,7 @@ import '../../data/local/daos/report_dao.dart';
 import '../../data/repositories/audit_repository.dart';
 import '../../data/repositories/backup_repository.dart';
 import '../../data/repositories/category_repository.dart';
+import '../../data/repositories/expense_repository.dart';
 import '../../data/repositories/export_repository.dart';
 import '../../data/repositories/import_repository.dart';
 import '../../data/repositories/license_repository.dart';
@@ -14,6 +15,7 @@ import '../../data/repositories/purchase_repository.dart';
 import '../../data/repositories/report_repository.dart';
 import '../../data/repositories/role_repository.dart';
 import '../../data/repositories/sale_repository.dart';
+import '../../data/repositories/sale_return_repository.dart';
 import '../../data/repositories/settings_repository.dart';
 import '../../data/repositories/stock_repository.dart';
 import '../../data/repositories/store_repository.dart';
@@ -51,6 +53,15 @@ class InitialBinding extends Bindings {
     Get.lazyPut<SupplierRepository>(() => SupplierRepository(db.supplierDao), fenix: true);
     Get.lazyPut<SaleRepository>(() => SaleRepository(db, db.saleDao, db.productDao, db.stockDao), fenix: true);
     Get.lazyPut<StockRepository>(() => StockRepository(db, db.stockDao, db.productDao), fenix: true);
+    Get.lazyPut<SaleReturnRepository>(
+      () => SaleReturnRepository(
+        db,
+        db.saleReturnDao,
+        db.saleDao,
+        Get.find<StockRepository>(),
+      ),
+      fenix: true,
+    );
     Get.lazyPut<PurchaseRepository>(
       () => PurchaseRepository(
         db,
@@ -68,6 +79,13 @@ class InitialBinding extends Bindings {
         db.opnameDao,
         Get.find<StockRepository>(),
         db.productDao,
+      ),
+      fenix: true,
+    );
+    Get.lazyPut<ExpenseRepository>(
+      () => ExpenseRepository(
+        db,
+        db.expenseDao,
       ),
       fenix: true,
     );

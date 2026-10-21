@@ -129,7 +129,23 @@ class ReceiptPdfService {
               pw.Center(
                 child: pw.Text(dividerText, style: pw.TextStyle(font: fontRegular, fontSize: smallFontSize)),
               ),
-              if (data.isReprint) ...[
+              if (data.isReturn) ...[
+                pw.SizedBox(height: 2),
+                pw.Center(
+                  child: pw.Text(
+                    '*** BUKTI RETUR PENJUALAN ***',
+                    style: pw.TextStyle(
+                      font: fontBold,
+                      fontSize: bodyFontSize,
+                      fontWeight: pw.FontWeight.bold,
+                    ),
+                  ),
+                ),
+                pw.SizedBox(height: 1),
+                pw.Center(
+                  child: pw.Text(dividerText, style: pw.TextStyle(font: fontRegular, fontSize: smallFontSize)),
+                ),
+              ] else if (data.isReprint) ...[
                 pw.SizedBox(height: 2),
                 pw.Center(
                   child: pw.Text(
@@ -148,8 +164,13 @@ class ReceiptPdfService {
               ],
               pw.SizedBox(height: 2),
 
-              // 2. Metadata Invoice
-              _buildTwoCol('No. Inv', data.invoiceNo, fontRegular, fontBold, bodyFontSize),
+              // 2. Metadata Invoice / Return
+              if (data.isReturn) ...[
+                _buildTwoCol('No. Retur', data.returnNo ?? data.invoiceNo, fontRegular, fontBold, bodyFontSize),
+                if (data.originInvoiceNo != null)
+                  _buildTwoCol('Nota Asal', data.originInvoiceNo!, fontRegular, fontRegular, bodyFontSize),
+              ] else
+                _buildTwoCol('No. Inv', data.invoiceNo, fontRegular, fontBold, bodyFontSize),
               _buildTwoCol('Kasir', data.cashierName, fontRegular, fontRegular, bodyFontSize),
               _buildTwoCol('Waktu', DateFormatter.formatDateTime(data.dateTime), fontRegular, fontRegular, bodyFontSize),
 
@@ -188,6 +209,11 @@ class ReceiptPdfService {
                           ),
                         ],
                       ),
+                      if (data.isReturn && !item.restock)
+                        pw.Text(
+                          '  (Barang Rusak - Tidak Restock)',
+                          style: pw.TextStyle(font: fontRegular, fontSize: smallFontSize, fontStyle: pw.FontStyle.italic),
+                        ),
                       // Diskon item jika ada
                       if (item.discount > 0)
                         pw.Text(
@@ -207,18 +233,45 @@ class ReceiptPdfService {
               pw.SizedBox(height: 2),
 
               // 4. Ringkasan Keuangan
-              _buildTwoCol('Subtotal', formatRupiah(data.subtotal), fontRegular, fontRegular, bodyFontSize),
+              _buildTwoCol(
+                data.isReturn ? 'Subtotal Retur' : 'Subtotal',
+                formatRupiah(data.subtotal),
+                fontRegular,
+                fontRegular,
+                bodyFontSize,
+              ),
               if (data.discount > 0)
                 _buildTwoCol('Diskon', '-${formatRupiah(data.discount)}', fontRegular, fontRegular, bodyFontSize),
+              if (data.tax > 0)
+                _buildTwoCol(
+                  data.isReturn
+                      ? 'Pajak Dikembalikan'
+                      : '${data.taxName ?? 'PPN'}${data.taxRatePercentString.isNotEmpty ? ' (${data.taxRatePercentString})' : ''}',
+                  formatRupiah(data.tax),
+                  fontRegular,
+                  fontRegular,
+                  bodyFontSize,
+                ),
 
               pw.SizedBox(height: 2),
               _buildTwoCol(
-                'TOTAL',
+                data.isReturn ? 'TOTAL REFUND' : 'TOTAL',
                 formatRupiah(data.total),
                 fontBold,
                 fontBold,
                 bodyFontSize + 1.5,
               ),
+              if (data.isReturn && data.returnReason != null && data.returnReason!.isNotEmpty)
+                _buildTwoCol('Alasan', data.returnReason!, fontRegular, fontRegular, smallFontSize),
+              if (data.tax > 0 && data.taxMode == 'inclusive' && !data.isReturn) ...[
+                pw.Align(
+                  alignment: pw.Alignment.centerRight,
+                  child: pw.Text(
+                    '(Termasuk ${data.taxName ?? 'PPN'}${data.taxRatePercentString.isNotEmpty ? ' ${data.taxRatePercentString}' : ''})',
+                    style: pw.TextStyle(font: fontRegular, fontSize: smallFontSize, fontStyle: pw.FontStyle.italic),
+                  ),
+                ),
+              ],
 
               pw.SizedBox(height: 3),
               // Pembayaran

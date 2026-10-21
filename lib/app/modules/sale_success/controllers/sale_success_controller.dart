@@ -7,6 +7,7 @@ import '../../../core/printing/receipt_data.dart';
 import '../../../core/printing/receipt_data_mapper.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../data/repositories/sale_repository.dart';
+import '../../../data/repositories/settings_repository.dart';
 import '../../../routes/app_pages.dart';
 import '../../pos/controllers/pos_controller.dart';
 import '../sale_success_args.dart';
@@ -16,6 +17,7 @@ class SaleSuccessController extends GetxController {
 
   final isLoading = true.obs;
   final saleDetail = Rxn<SaleDetail>();
+  final taxName = 'PPN'.obs;
   final isPrinting = false.obs;
   final isSavingPdf = false.obs;
   final autoPrintStatus = RxnString();
@@ -67,6 +69,10 @@ class SaleSuccessController extends GetxController {
     try {
       final detail = await _saleRepo.getSaleDetail(saleId);
       saleDetail.value = detail;
+      if (Get.isRegistered<SettingsRepository>()) {
+        final tName = await Get.find<SettingsRepository>().getSetting('tax.name');
+        if (tName != null && tName.isNotEmpty) taxName.value = tName;
+      }
     } catch (e) {
       Get.snackbar('Error', 'Gagal memuat data transaksi: $e', snackPosition: SnackPosition.BOTTOM);
     } finally {
@@ -83,6 +89,7 @@ class SaleSuccessController extends GetxController {
       sale: detail.sale,
       items: detail.items,
       payments: detail.payments,
+      taxName: taxName.value,
     );
   }
 

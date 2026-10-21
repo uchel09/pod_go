@@ -7,6 +7,7 @@ import '../../core/permissions/permission_keys.dart';
 import '../../core/permissions/permission_service.dart';
 import '../../core/services/audit_service.dart';
 import '../../core/services/auth_service.dart';
+import '../../core/tax/tax_calculator.dart';
 import '../../core/utils/app_exception.dart';
 import '../local/app_database.dart';
 import '../local/daos/product_dao.dart';
@@ -327,6 +328,14 @@ class SaleRepository {
         );
       }
 
+      final hasReturns = await _db.saleReturnDao.hasReturnsForSale(saleId);
+      if (hasReturns) {
+        throw const AppException(
+          'Transaksi yang sudah memiliki retur tidak dapat dibatalkan (void).',
+          code: 'SALE_HAS_RETURNS',
+        );
+      }
+
       final now = DateTime.now();
 
       // 3. Set status=void, voidReason, voidedBy, voidedAt
@@ -410,6 +419,9 @@ class SaleRepository {
     required List<CheckoutCartItem> items,
     required List<CheckoutPayment> payments,
     int overallDiscount = 0,
+    int tax = 0,
+    int? taxRateBps,
+    String? taxMode,
     bool allowNegativeStock = false,
     DateTime? transactionTime,
   }) async {
@@ -456,7 +468,25 @@ class SaleRepository {
       }
 
       final totalDiscount = itemsDiscount + overallDiscount;
-      final totalAmount = (subtotal - totalDiscount).clamp(0, 999999999999);
+      final netBasis = (subtotal - totalDiscount).clamp(0, 999999999999);
+
+      final int effectiveTax;
+      final int totalAmount;
+
+      if (taxRateBps != null && taxRateBps > 0 && taxMode != null) {
+        final calc = TaxCalculator.calculate(
+          basis: netBasis,
+          rateBps: taxRateBps,
+          mode: taxMode,
+          isEnabled: true,
+        );
+        effectiveTax = calc.tax;
+        totalAmount = calc.total;
+      } else {
+        effectiveTax = tax;
+        totalAmount = (taxMode == 'inclusive' ? netBasis : (netBasis + tax))
+            .clamp(0, 999999999999);
+      }
 
       final totalPaid = payments.fold<int>(0, (sum, p) => sum + p.amount);
       if (totalPaid < totalAmount) {
@@ -481,7 +511,9 @@ class SaleRepository {
           cashierId: Value(cashierId),
           subtotal: Value(subtotal),
           discount: Value(totalDiscount),
-          tax: const Value(0),
+          tax: Value(effectiveTax),
+          taxRateBps: Value(taxRateBps),
+          taxMode: Value(taxMode),
           total: Value(totalAmount),
           paid: Value(totalPaid),
           change: Value(changeAmount),
@@ -583,7 +615,9 @@ class SaleRepository {
         cashierId: cashierId,
         subtotal: subtotal,
         discount: totalDiscount,
-        tax: 0,
+        tax: effectiveTax,
+        taxRateBps: taxRateBps,
+        taxMode: taxMode,
         total: totalAmount,
         paid: totalPaid,
         change: changeAmount,

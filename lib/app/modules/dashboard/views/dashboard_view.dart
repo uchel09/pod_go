@@ -158,7 +158,9 @@ class DashboardView extends GetView<DashboardController> {
       _MetricTile(
         title: 'Omzet Hari Ini',
         value: formatRupiah(data.todayOmzet),
-        subtitle: '${data.todayTxCount} transaksi selesai',
+        subtitle: (data.todayReturns ?? 0) > 0
+            ? '${data.todayTxCount} tx (Retur: -${formatRupiah(data.todayReturns)})'
+            : '${data.todayTxCount} transaksi selesai',
         icon: Icons.payments_outlined,
         color: theme.colorScheme.primary,
         containerColor: theme.colorScheme.primaryContainer,
@@ -179,11 +181,22 @@ class DashboardView extends GetView<DashboardController> {
         color: Colors.teal.shade700,
         containerColor: Colors.teal.shade50,
       ),
+      if (data.todayExpenses != null)
+        _MetricTile(
+          title: 'Pengeluaran Hari Ini',
+          value: formatRupiah(data.todayExpenses),
+          subtitle: 'Biaya operasional',
+          icon: Icons.money_off_outlined,
+          color: Colors.red.shade700,
+          containerColor: Colors.red.shade50,
+        ),
       if (canViewProfit)
         _MetricTile(
           title: 'Laba Kotor Hari Ini',
           value: formatRupiah(data.todayProfit),
-          subtitle: 'HPP: ${formatRupiah(data.todayCogs ?? 0)}',
+          subtitle: data.todayNetProfit != null
+              ? 'Laba Bersih: ${formatRupiah(data.todayNetProfit)}'
+              : 'HPP: ${formatRupiah(data.todayCogs ?? 0)}',
           icon: Icons.trending_up,
           color: Colors.green.shade700,
           containerColor: Colors.green.shade50,

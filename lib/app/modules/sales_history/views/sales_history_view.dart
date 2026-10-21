@@ -8,7 +8,9 @@ import '../../../core/widgets/empty_state.dart';
 import '../../../core/widgets/error_state.dart';
 import '../../../core/widgets/loading_indicator.dart';
 import '../../../data/local/app_database.dart';
+import '../../../data/local/daos/sale_return_dao.dart';
 import '../../../data/repositories/sale_repository.dart';
+import '../../../routes/app_pages.dart';
 import '../controllers/sales_history_controller.dart';
 
 class SalesHistoryView extends GetView<SalesHistoryController> {
@@ -43,17 +45,56 @@ class SalesHistoryView extends GetView<SalesHistoryController> {
 
         return Column(
           children: [
+            // Tab Pemilih: Penjualan vs Riwayat Retur
+            _buildTabSelector(context, theme),
+
             // Panel Filter & Pencarian
             _buildFilterHeader(context, theme),
 
-            // Ringkasan Total di Atas List
-            _buildAggregateSummaryCard(context, theme),
+            // Ringkasan Total di Atas List (hanya tampil di tab Penjualan)
+            if (controller.currentTab.value == 0)
+              _buildAggregateSummaryCard(context, theme),
 
-            // Daftar Riwayat Transaksi (Grup per Hari)
-            Expanded(child: _buildHistoryContent(context, theme)),
+            // Konten Riwayat
+            Expanded(
+              child: controller.currentTab.value == 0
+                  ? _buildHistoryContent(context, theme)
+                  : _buildReturnsContent(context, theme),
+            ),
           ],
         );
       }),
+    );
+  }
+
+  /// Tab Switcher Penjualan vs Riwayat Retur
+  Widget _buildTabSelector(BuildContext context, ThemeData theme) {
+    return Container(
+      color: theme.colorScheme.surface,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: Obx(() => SegmentedButton<int>(
+            segments: const [
+              ButtonSegment<int>(
+                value: 0,
+                label: Text('Transaksi Penjualan'),
+                icon: Icon(Icons.point_of_sale),
+              ),
+              ButtonSegment<int>(
+                value: 1,
+                label: Text('Riwayat Retur'),
+                icon: Icon(Icons.assignment_return),
+              ),
+            ],
+            selected: {controller.currentTab.value},
+            onSelectionChanged: (set) {
+              if (set.isNotEmpty) {
+                controller.currentTab.value = set.first;
+                if (set.first == 1) {
+                  controller.fetchReturns();
+                }
+              }
+            },
+          )),
     );
   }
 
@@ -927,7 +968,10 @@ class SalesHistoryView extends GetView<SalesHistoryController> {
                               color: Colors.orange.shade800,
                             ),
                           if (sale.tax > 0)
-                            _buildRow('Pajak', formatRupiah(sale.tax)),
+                            _buildRow(
+                              'Pajak${sale.taxRateBps != null && sale.taxRateBps! > 0 ? (sale.taxRateBps! % 100 == 0 ? ' (${sale.taxRateBps! ~/ 100}%)' : ' (${sale.taxRateBps! / 100}%)') : ''}${sale.taxMode == 'inclusive' ? ' (Inklusif)' : ''}',
+                              formatRupiah(sale.tax),
+                            ),
                           _buildRow(
                             'Total',
                             formatRupiah(sale.total),
@@ -961,12 +1005,61 @@ class SalesHistoryView extends GetView<SalesHistoryController> {
                               ),
                             ),
                           ),
+
+                          // Riwayat Retur untuk Nota ini (jika ada)
+                          FutureBuilder<List<SaleReturn>>(
+                            future: controller.getReturnsForSale(sale.id),
+                            builder: (context, retSnap) {
+                              final returns = retSnap.data ?? [];
+                              if (returns.isEmpty) return const SizedBox.shrink();
+                              return Padding(
+                                padding: const EdgeInsets.only(top: 12),
+                                child: Container(
+                                  padding: const EdgeInsets.all(10),
+                                  decoration: BoxDecoration(
+                                    color: Colors.amber.shade50,
+                                    borderRadius: BorderRadius.circular(8),
+                                    border: Border.all(color: Colors.amber.shade300),
+                                  ),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Row(
+                                        children: [
+                                          Icon(Icons.assignment_return,
+                                              size: 16, color: Colors.amber.shade900),
+                                          const SizedBox(width: 6),
+                                          Text(
+                                            'Riwayat Retur Transaksi Ini (${returns.length}):',
+                                            style: TextStyle(
+                                              fontSize: 12,
+                                              fontWeight: FontWeight.bold,
+                                              color: Colors.amber.shade900,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 4),
+                                      ...returns.map((r) => Padding(
+                                            padding: const EdgeInsets.symmetric(vertical: 2),
+                                            child: Text(
+                                              '• ${r.returnNo} (${DateFormatter.formatDateTime(r.createdAt)}): -${formatRupiah(r.total)} [${r.reason}]',
+                                              style: TextStyle(
+                                                  fontSize: 11, color: Colors.brown.shade800),
+                                            ),
+                                          )),
+                                    ],
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
                         ],
                       ),
                     ),
                     const SizedBox(height: 16),
 
-                    // Tombol Aksi: Cetak Ulang, PDF, dan Void
+                    // Tombol Aksi: Cetak Ulang, PDF, Retur, dan Void
                     Column(
                       children: [
                         Row(
@@ -1002,6 +1095,35 @@ class SalesHistoryView extends GetView<SalesHistoryController> {
                             ),
                           ],
                         ),
+
+                        // Tombol Retur (Hanya tampil jika canReturn dan status completed)
+                        if (controller.canReturn && !isVoid) ...[
+                          const SizedBox(height: 8),
+                          SizedBox(
+                            width: double.infinity,
+                            child: FilledButton.icon(
+                              style: FilledButton.styleFrom(
+                                backgroundColor: Colors.amber.shade900,
+                                padding: const EdgeInsets.symmetric(vertical: 11),
+                              ),
+                              onPressed: () async {
+                                Get.back();
+                                final res = await Get.toNamed(
+                                  Routes.SALE_RETURN,
+                                  arguments: sale.id,
+                                );
+                                if (res == true) {
+                                  controller.loadInitialData();
+                                  if (controller.currentTab.value == 1) {
+                                    controller.fetchReturns();
+                                  }
+                                }
+                              },
+                              icon: const Icon(Icons.assignment_return, size: 18),
+                              label: const Text('Retur Barang / Refund'),
+                            ),
+                          ),
+                        ],
 
                         // Tombol VOID (Hanya tampil jika canVoid dan status completed)
                         if (controller.canVoid && !isVoid) ...[
@@ -1190,6 +1312,199 @@ class SalesHistoryView extends GetView<SalesHistoryController> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  // ==========================================
+  // TAB RIWAYAT RETUR PENJUALAN
+  // ==========================================
+
+  Widget _buildReturnsContent(BuildContext context, ThemeData theme) {
+    return Obx(() {
+      if (controller.isLoadingReturns.value) {
+        return const Center(child: LoadingIndicator(message: 'Memuat riwayat retur...'));
+      }
+
+      final returns = controller.returnEntries;
+      if (returns.isEmpty) {
+        return const Center(
+          child: EmptyState(
+            title: 'Belum Ada Transaksi Retur',
+            message: 'Tidak ada riwayat retur barang pada filter tanggal yang dipilih.',
+            icon: Icons.assignment_return_outlined,
+          ),
+        );
+      }
+
+      return RefreshIndicator(
+        onRefresh: controller.fetchReturns,
+        child: ListView.builder(
+          padding: const EdgeInsets.all(16),
+          itemCount: returns.length,
+          itemBuilder: (context, index) {
+            final entry = returns[index];
+            return Card(
+              margin: const EdgeInsets.only(bottom: 10),
+              elevation: 0,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+                side: BorderSide(color: theme.colorScheme.outlineVariant),
+              ),
+              child: ListTile(
+                onTap: () => _showReturnDetailDialog(context, entry),
+                leading: CircleAvatar(
+                  backgroundColor: Colors.amber.shade100,
+                  child: Icon(Icons.assignment_return, color: Colors.amber.shade900, size: 20),
+                ),
+                title: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(entry.saleReturn.returnNo, style: const TextStyle(fontWeight: FontWeight.bold)),
+                    Text(
+                      '-${formatRupiah(entry.saleReturn.total)}',
+                      style: TextStyle(color: Colors.red.shade800, fontWeight: FontWeight.bold),
+                    ),
+                  ],
+                ),
+                subtitle: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const SizedBox(height: 4),
+                    Text(
+                      'Nota: ${entry.invoiceNo} • ${entry.itemCount} barang • Kasir: ${entry.cashierName}',
+                      style: const TextStyle(fontSize: 12),
+                    ),
+                    Text(
+                      'Alasan: ${entry.saleReturn.reason}',
+                      style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                    ),
+                  ],
+                ),
+                trailing: const Icon(Icons.chevron_right, size: 20),
+              ),
+            );
+          },
+        ),
+      );
+    });
+  }
+
+  void _showReturnDetailDialog(BuildContext context, SaleReturnEntry entry) {
+    Get.dialog(
+      Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 480),
+          child: FutureBuilder<SaleReturnDetail?>(
+            future: controller.getReturnDetail(entry.saleReturn.id),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Padding(
+                  padding: EdgeInsets.all(32),
+                  child: LoadingIndicator(message: 'Memuat detail retur...'),
+                );
+              }
+
+              final detail = snapshot.data;
+              if (detail == null) {
+                return const Padding(
+                  padding: EdgeInsets.all(24),
+                  child: Text('Data retur tidak ditemukan.'),
+                );
+              }
+
+              final ret = detail.saleReturn;
+              final receipt = controller.buildReturnReceipt(detail);
+
+              return Padding(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Row(
+                      children: [
+                        CircleAvatar(
+                          backgroundColor: Colors.amber.shade100,
+                          child: Icon(Icons.assignment_return, color: Colors.amber.shade900),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(ret.returnNo, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                              Text('Nota Asal: ${detail.invoiceNo}', style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                            ],
+                          ),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.close),
+                          onPressed: () => Get.back(),
+                        ),
+                      ],
+                    ),
+                    const Divider(height: 24),
+                    Text('Waktu: ${DateFormatter.formatDateTime(ret.createdAt)} • Kasir: ${detail.cashierName}', style: const TextStyle(fontSize: 12)),
+                    Text('Alasan: ${ret.reason}', style: const TextStyle(fontSize: 12)),
+                    Text('Metode Refund: ${ret.refundMethod.toUpperCase()}', style: const TextStyle(fontSize: 12)),
+                    const Divider(height: 24),
+                    const Text('Rincian Barang Diretur:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                    const SizedBox(height: 8),
+                    ...detail.items.map((it) => Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 4),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(it.productName, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                                    Text(
+                                      '${it.qty} x ${formatRupiah(it.unitPrice)} ${it.restock ? "(Kembali ke Stok)" : "(Rusak - Tidak Restock)"}',
+                                      style: TextStyle(fontSize: 11, color: it.restock ? Colors.green.shade800 : Colors.red.shade800),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              Text(formatRupiah(it.subtotal), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                            ],
+                          ),
+                        )),
+                    const Divider(height: 20),
+                    _buildRow('Subtotal Retur', formatRupiah(ret.subtotal)),
+                    if (ret.taxRefund > 0)
+                      _buildRow('Pajak Dikembalikan', formatRupiah(ret.taxRefund)),
+                    _buildRow('Total Pengembalian', formatRupiah(ret.total), isBold: true, color: Colors.red.shade800),
+                    const SizedBox(height: 20),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: () => controller.savePdf(receipt),
+                            icon: const Icon(Icons.picture_as_pdf, size: 18),
+                            label: const Text('Simpan PDF'),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: FilledButton.icon(
+                            style: FilledButton.styleFrom(backgroundColor: Colors.amber.shade900),
+                            onPressed: () => controller.printReceipt(receipt),
+                            icon: const Icon(Icons.print, size: 18),
+                            label: const Text('Cetak Bukti'),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+        ),
       ),
     );
   }

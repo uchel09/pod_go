@@ -328,6 +328,13 @@ class ImportExportController extends GetxController {
           title: 'Log Aktivitas',
         );
         break;
+      case ExportType.expenses:
+        _runExportOperation(
+          task: () => repo.exportExpenses(format: format, from: from, to: to),
+          format: format,
+          title: 'Pengeluaran Operasional',
+        );
+        break;
       case ExportType.fullReport:
         // Laporan lengkap diekspor melalui modul reports
         break;

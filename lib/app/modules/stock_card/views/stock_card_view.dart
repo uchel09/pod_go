@@ -191,6 +191,13 @@ class StockCardView extends GetView<StockCardController> {
                   theme: theme,
                   selectedColor: Colors.purple.shade700,
                 ),
+                _buildChip(
+                  label: 'Retur',
+                  isSelected: controller.selectedType.value == 'return',
+                  onSelected: () => controller.setTypeFilter('return'),
+                  theme: theme,
+                  selectedColor: Colors.amber.shade900,
+                ),
 
                 const SizedBox(width: 8),
                 Container(height: 20, width: 1, color: theme.colorScheme.outlineVariant),
@@ -603,6 +610,11 @@ class StockCardView extends GetView<StockCardController> {
         bg = Colors.purple.shade50;
         fg = Colors.purple.shade800;
         label = 'Void';
+        break;
+      case 'return':
+        bg = Colors.amber.shade50;
+        fg = Colors.amber.shade900;
+        label = 'Retur';
         break;
       default:
         bg = Colors.grey.shade100;

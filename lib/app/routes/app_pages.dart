@@ -13,6 +13,10 @@ import '../modules/dashboard/bindings/dashboard_binding.dart';
 import '../modules/dashboard/views/dashboard_view.dart';
 import '../modules/developer_panel/bindings/developer_panel_binding.dart';
 import '../modules/developer_panel/views/developer_panel_view.dart';
+import '../modules/expense_form/bindings/expense_form_binding.dart';
+import '../modules/expense_form/views/expense_form_view.dart';
+import '../modules/expenses/bindings/expenses_binding.dart';
+import '../modules/expenses/views/expenses_view.dart';
 import '../modules/home/bindings/home_binding.dart';
 import '../modules/home/views/home_view.dart';
 import '../modules/import_export/bindings/import_export_binding.dart';
@@ -37,12 +41,16 @@ import '../modules/purchases/bindings/purchases_binding.dart';
 import '../modules/purchases/views/purchases_view.dart';
 import '../modules/reports/bindings/reports_binding.dart';
 import '../modules/reports/views/reports_view.dart';
+import '../modules/sale_return/bindings/sale_return_binding.dart';
+import '../modules/sale_return/views/sale_return_view.dart';
 import '../modules/sale_success/bindings/sale_success_binding.dart';
 import '../modules/sale_success/views/sale_success_view.dart';
 import '../modules/sales_history/bindings/sales_history_binding.dart';
 import '../modules/sales_history/views/sales_history_view.dart';
 import '../modules/scanner_test/bindings/scanner_test_binding.dart';
 import '../modules/scanner_test/views/scanner_test_view.dart';
+import '../modules/settings/bindings/settings_binding.dart';
+import '../modules/settings/views/settings_view.dart';
 import '../modules/setup/bindings/setup_binding.dart';
 import '../modules/setup/views/setup_view.dart';
 import '../modules/stock_card/bindings/stock_card_binding.dart';
@@ -225,6 +233,30 @@ class AppPages {
       name: _Paths.DEVELOPER_PANEL,
       page: () => const DeveloperPanelView(),
       binding: DeveloperPanelBinding(),
+      middlewares: [AuthMiddleware()],
+    ),
+    GetPage(
+      name: _Paths.SETTINGS,
+      page: () => const SettingsView(),
+      binding: SettingsBinding(),
+      middlewares: [AuthMiddleware()],
+    ),
+    GetPage(
+      name: _Paths.SALE_RETURN,
+      page: () => const SaleReturnView(),
+      binding: SaleReturnBinding(),
+      middlewares: [AuthMiddleware()],
+    ),
+    GetPage(
+      name: _Paths.EXPENSES,
+      page: () => const ExpensesView(),
+      binding: ExpensesBinding(),
+      middlewares: [AuthMiddleware()],
+    ),
+    GetPage(
+      name: _Paths.EXPENSE_FORM,
+      page: () => const ExpenseFormView(),
+      binding: ExpenseFormBinding(),
       middlewares: [AuthMiddleware()],
     ),
   ];

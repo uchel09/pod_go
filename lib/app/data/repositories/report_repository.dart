@@ -6,12 +6,22 @@ import '../../core/permissions/permission_service.dart';
 import '../../core/services/auth_service.dart';
 import '../../core/services/feature_gate.dart';
 import '../../core/utils/app_exception.dart';
+import '../local/daos/expense_dao.dart';
 import '../local/daos/report_dao.dart';
 
 /// Data agregat dashboard utama.
 class DashboardData {
-  /// Omzet hari ini (Rupiah integer, status completed)
+  /// Omzet hari ini (Penjualan Bersih setelah retur, Rupiah integer, status completed)
   final int todayOmzet;
+
+  /// Omzet kotor hari ini sebelum retur
+  final int todayGrossOmzet;
+
+  /// Total nominal retur hari ini
+  final int todayReturns;
+
+  /// Jumlah transaksi retur hari ini
+  final int todayReturnCount;
 
   /// Jumlah transaksi hari ini
   final int todayTxCount;
@@ -21,6 +31,12 @@ class DashboardData {
 
   /// Laba kotor hari ini (null jika user tidak memiliki izin report.view_profit)
   final int? todayProfit;
+
+  /// Laba bersih hari ini = laba kotor - pengeluaran (null jika user tidak memiliki izin report.view_profit)
+  final int? todayNetProfit;
+
+  /// Total pengeluaran hari ini (null jika user tidak memiliki akses pengeluaran)
+  final int? todayExpenses;
 
   /// HPP hari ini (null jika user tidak memiliki izin report.view_profit)
   final int? todayCogs;
@@ -39,9 +55,14 @@ class DashboardData {
 
   const DashboardData({
     required this.todayOmzet,
+    this.todayGrossOmzet = 0,
+    this.todayReturns = 0,
+    this.todayReturnCount = 0,
     required this.todayTxCount,
     required this.todayItemsSold,
     this.todayProfit,
+    this.todayNetProfit,
+    this.todayExpenses,
     this.todayCogs,
     this.todayTax,
     required this.revenueChart,
@@ -65,6 +86,7 @@ class FullReportData {
   final StockValuationSummary? stockValuation;
   final LowAndOutStockSummary stockAlerts;
   final VoidSummaryEntry voidSummary;
+  final List<ExpenseCategoryAggregate> expenseCategoryBreakdown;
   final bool isProfitVisible;
 
   const FullReportData({
@@ -80,6 +102,7 @@ class FullReportData {
     this.stockValuation,
     required this.stockAlerts,
     required this.voidSummary,
+    this.expenseCategoryBreakdown = const [],
     required this.isProfitVisible,
   });
 }
@@ -143,14 +166,21 @@ class ReportRepository {
     final lowStockCount = await _reportDao.countLowStockProducts();
 
     final canViewProfit = _hasPermission(PermissionKeys.reportViewProfit);
+    final canViewExpenses = _isFeatureEnabled(Feature.expenses) &&
+        _hasPermission(PermissionKeys.expenseView);
 
     return DashboardData(
-      todayOmzet: summary.omzet,
+      todayOmzet: summary.netSales,
+      todayGrossOmzet: summary.grossOmzet,
+      todayReturns: summary.totalReturns,
+      todayReturnCount: summary.returnCount,
       todayTxCount: summary.txCount,
       todayItemsSold: summary.itemsSold,
       todayProfit: canViewProfit ? summary.grossProfit : null,
+      todayNetProfit: canViewProfit ? summary.netProfit : null,
+      todayExpenses: canViewExpenses ? summary.totalExpenses : null,
       todayCogs: canViewProfit ? summary.cogs : null,
-      todayTax: canViewProfit ? summary.tax : null,
+      todayTax: canViewProfit ? summary.netTax : null,
       revenueChart: chartPoints,
       lowStockProducts: lowStock,
       totalLowStockCount: lowStockCount,
@@ -231,6 +261,10 @@ class ReportRepository {
     final stockValuationRaw = await _reportDao.getStockValuation();
     final stockAlerts = await _reportDao.getLowAndOutStockSummary(limit: 50);
     final voidSummary = await _reportDao.getVoidSummary(from: from, to: to);
+    final expenseBreakdown = await _reportDao.getExpenseCategoryBreakdown(
+      from: from,
+      to: to,
+    );
 
     // Sensor angka laba & HPP jika tidak punya izin report.view_profit
     final summary = canViewProfit ? summaryRaw : summaryRaw.copyWithProfitHidden();
@@ -262,6 +296,7 @@ class ReportRepository {
       stockValuation: stockValuation,
       stockAlerts: stockAlerts,
       voidSummary: voidSummary,
+      expenseCategoryBreakdown: expenseBreakdown,
       isProfitVisible: canViewProfit,
     );
   }

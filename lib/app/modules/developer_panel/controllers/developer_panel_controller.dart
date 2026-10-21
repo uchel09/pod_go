@@ -209,7 +209,7 @@ class DeveloperPanelController extends GetxController {
     }
   }
 
-  Future<void> generateSampleData() async {
+  Future<void> generateSampleData({int targetProducts = 50, int targetSales = 50}) async {
     if (!canManageLicense) return;
     isLoading.value = true;
     try {
@@ -219,108 +219,133 @@ class DeveloperPanelController extends GetxController {
               ? AuthService.to.currentUser.value!.id
               : 1;
 
-      await _db.transaction(() async {
-        final productIds = <int>[];
-        for (int i = 1; i <= 50; i++) {
-          final pId = await _db.into(_db.products).insert(
-                ProductsCompanion(
-                  name: drift.Value('[SAMPLE] Produk Demo #$i'),
-                  barcode: drift.Value('SMPL${i.toString().padLeft(4, '0')}'),
-                  sku: drift.Value('SKU-SMPL-$i'),
-                  costPrice: drift.Value(5000 + (i * 200)),
-                  sellPrice: drift.Value(10000 + (i * 500)),
-                  currentStock: const drift.Value(100),
-                  minStock: const drift.Value(5),
-                  isActive: const drift.Value(true),
-                  createdAt: drift.Value(now),
-                  updatedAt: drift.Value(now),
-                ),
-              );
-          productIds.add(pId);
+      // Ambil count sample saat ini agar penomoran berlanjut
+      final existingSampleCount = sampleProductCount.value;
 
-          await _db.into(_db.stockMovements).insert(
-                StockMovementsCompanion(
-                  uuid: drift.Value('sm-sample-$i-${now.millisecondsSinceEpoch}'),
-                  productId: drift.Value(pId),
-                  type: const drift.Value('adjustment'),
-                  qtyChange: const drift.Value(100),
-                  note: const drift.Value('Sample Initial Stock'),
-                  createdBy: drift.Value(currentUserId),
-                  createdAt: drift.Value(now),
-                  updatedAt: drift.Value(now),
-                ),
-              );
+      // 1. Insert Produk & Stok Awal per batch 250
+      final productIds = <int>[];
+      const batchSize = 250;
+
+      for (int i = 1; i <= targetProducts; i += batchSize) {
+        final end = (i + batchSize - 1 > targetProducts) ? targetProducts : i + batchSize - 1;
+        await _db.transaction(() async {
+          for (int j = i; j <= end; j++) {
+            final globalIdx = existingSampleCount + j;
+            final pId = await _db.into(_db.products).insert(
+                  ProductsCompanion(
+                    name: drift.Value('[SAMPLE] Produk Demo #$globalIdx'),
+                    barcode: drift.Value('SMPL${globalIdx.toString().padLeft(6, '0')}'),
+                    sku: drift.Value('SKU-SMPL-$globalIdx'),
+                    costPrice: drift.Value(5000 + ((j % 50) * 200)),
+                    sellPrice: drift.Value(10000 + ((j % 50) * 500)),
+                    currentStock: const drift.Value(100),
+                    minStock: const drift.Value(5),
+                    isActive: const drift.Value(true),
+                    createdAt: drift.Value(now),
+                    updatedAt: drift.Value(now),
+                  ),
+                );
+            productIds.add(pId);
+
+            await _db.into(_db.stockMovements).insert(
+                  StockMovementsCompanion(
+                    uuid: drift.Value('sm-sample-$globalIdx-${now.millisecondsSinceEpoch}'),
+                    productId: drift.Value(pId),
+                    type: const drift.Value('adjustment'),
+                    qtyChange: const drift.Value(100),
+                    note: const drift.Value('Sample Initial Stock'),
+                    createdBy: drift.Value(currentUserId),
+                    createdAt: drift.Value(now),
+                    updatedAt: drift.Value(now),
+                  ),
+                );
+          }
+        });
+      }
+
+      // Ambil seluruh sample product ids yang tersedia untuk dijadikan item transaksi
+      final allSampleProducts = await (_db.select(_db.products)
+            ..where((t) => t.name.like('[SAMPLE]%')))
+          .get();
+      final pool = allSampleProducts.isNotEmpty ? allSampleProducts : [];
+
+      if (pool.isNotEmpty) {
+        final existingSalesCount = sampleSaleCount.value;
+
+        for (int i = 1; i <= targetSales; i += batchSize) {
+          final end = (i + batchSize - 1 > targetSales) ? targetSales : i + batchSize - 1;
+          await _db.transaction(() async {
+            for (int j = i; j <= end; j++) {
+              final globalSaleIdx = existingSalesCount + j;
+              final invoiceNo = 'INV-SMPL-${globalSaleIdx.toString().padLeft(6, '0')}';
+              final chosenProduct = pool[(j - 1) % pool.length];
+              const qty = 2;
+              final sellPrice = chosenProduct.sellPrice;
+              final costPrice = chosenProduct.costPrice;
+              final total = sellPrice * qty;
+              final saleTime = now.subtract(Duration(minutes: (targetSales - j) * 5));
+
+              final saleId = await _db.into(_db.sales).insert(
+                    SalesCompanion(
+                      uuid: drift.Value('sale-sample-$globalSaleIdx-${now.millisecondsSinceEpoch}'),
+                      deviceId: const drift.Value('dev-simulated'),
+                      invoiceNo: drift.Value(invoiceNo),
+                      cashierId: drift.Value(currentUserId),
+                      subtotal: drift.Value(total),
+                      discount: const drift.Value(0),
+                      tax: const drift.Value(0),
+                      total: drift.Value(total),
+                      paid: drift.Value(total),
+                      change: const drift.Value(0),
+                      status: const drift.Value('completed'),
+                      createdAt: drift.Value(saleTime),
+                      updatedAt: drift.Value(saleTime),
+                    ),
+                  );
+
+              await _db.into(_db.saleItems).insert(
+                    SaleItemsCompanion(
+                      saleId: drift.Value(saleId),
+                      productId: drift.Value(chosenProduct.id),
+                      productName: drift.Value(chosenProduct.name),
+                      qty: const drift.Value(qty),
+                      price: drift.Value(sellPrice),
+                      costPrice: drift.Value(costPrice),
+                      discount: const drift.Value(0),
+                      subtotal: drift.Value(total),
+                      createdAt: drift.Value(saleTime),
+                      updatedAt: drift.Value(saleTime),
+                    ),
+                  );
+
+              await _db.into(_db.payments).insert(
+                    PaymentsCompanion(
+                      saleId: drift.Value(saleId),
+                      method: drift.Value(j % 3 == 0
+                          ? 'qris'
+                          : (j % 3 == 1 ? 'cash' : 'transfer')),
+                      amount: drift.Value(total),
+                      createdAt: drift.Value(saleTime),
+                      updatedAt: drift.Value(saleTime),
+                    ),
+                  );
+            }
+          });
         }
-
-        for (int i = 1; i <= 50; i++) {
-          final invoiceNo = 'INV-SMPL-${i.toString().padLeft(4, '0')}';
-          final pId = productIds[(i - 1) % productIds.length];
-          const qty = 2;
-          final costPrice = 5000 + (((i - 1) % productIds.length + 1) * 200);
-          final sellPrice = 10000 + (((i - 1) % productIds.length + 1) * 500);
-          final total = sellPrice * qty;
-          final saleTime = now.subtract(Duration(hours: 50 - i));
-
-          final saleId = await _db.into(_db.sales).insert(
-                SalesCompanion(
-                  uuid: drift.Value('sale-sample-$i-${now.millisecondsSinceEpoch}'),
-                  deviceId: const drift.Value('dev-simulated'),
-                  invoiceNo: drift.Value(invoiceNo),
-                  cashierId: drift.Value(currentUserId),
-                  subtotal: drift.Value(total),
-                  discount: const drift.Value(0),
-                  tax: const drift.Value(0),
-                  total: drift.Value(total),
-                  paid: drift.Value(total),
-                  change: const drift.Value(0),
-                  status: const drift.Value('completed'),
-                  createdAt: drift.Value(saleTime),
-                  updatedAt: drift.Value(saleTime),
-                ),
-              );
-
-          await _db.into(_db.saleItems).insert(
-                SaleItemsCompanion(
-                  saleId: drift.Value(saleId),
-                  productId: drift.Value(pId),
-                  productName: drift.Value(
-                      '[SAMPLE] Produk Demo #${((i - 1) % productIds.length) + 1}'),
-                  qty: const drift.Value(qty),
-                  price: drift.Value(sellPrice),
-                  costPrice: drift.Value(costPrice),
-                  discount: const drift.Value(0),
-                  subtotal: drift.Value(total),
-                  createdAt: drift.Value(saleTime),
-                  updatedAt: drift.Value(saleTime),
-                ),
-              );
-
-          await _db.into(_db.payments).insert(
-                PaymentsCompanion(
-                  saleId: drift.Value(saleId),
-                  method: drift.Value(i % 3 == 0
-                      ? 'qris'
-                      : (i % 3 == 1 ? 'cash' : 'transfer')),
-                  amount: drift.Value(total),
-                  createdAt: drift.Value(saleTime),
-                  updatedAt: drift.Value(saleTime),
-                ),
-              );
-        }
-      });
+      }
 
       if (Get.isRegistered<AuditService>()) {
         await AuditService.to.log(
           action: AuditActions.settingsUpdate,
           entity: 'developer',
-          detail: {'action': 'generate_sample_data', 'products': 50, 'sales': 50},
+          detail: {'action': 'generate_sample_data', 'products': targetProducts, 'sales': targetSales},
         );
       }
 
       await refreshData();
       _showFeedback(
         'Data Sampel Berhasil Dibuat',
-        '50 produk dan 50 transaksi sampel telah ditambahkan.',
+        '$targetProducts produk dan $targetSales transaksi sampel telah ditambahkan.',
         backgroundColor: Colors.green.shade800,
       );
     } catch (e) {
@@ -335,48 +360,17 @@ class DeveloperPanelController extends GetxController {
     if (!canManageLicense) return;
     isLoading.value = true;
     try {
-      int deletedProducts = 0;
-      int deletedSales = 0;
+      final initialProducts = sampleProductCount.value;
+      final initialSales = sampleSaleCount.value;
 
       await _db.transaction(() async {
-        final sampleProducts = await (_db.select(_db.products)
-              ..where((t) => t.name.like('[SAMPLE]%')))
-            .get();
-        final sampleProductIds = sampleProducts.map((p) => p.id).toList();
-
-        final sampleSales = await (_db.select(_db.sales)
-              ..where((t) => t.invoiceNo.like('INV-SMPL-%')))
-            .get();
-        final sampleSaleIds = sampleSales.map((s) => s.id).toList();
-
-        deletedProducts = sampleProductIds.length;
-        deletedSales = sampleSaleIds.length;
-
-        if (sampleSaleIds.isNotEmpty) {
-          await (_db.delete(_db.payments)
-                ..where((t) => t.saleId.isIn(sampleSaleIds)))
-              .go();
-          await (_db.delete(_db.saleItems)
-                ..where((t) => t.saleId.isIn(sampleSaleIds)))
-              .go();
-          await (_db.delete(_db.stockMovements)
-                ..where((t) =>
-                    t.refTable.equals('sales') & t.refId.isIn(sampleSaleIds)))
-              .go();
-          await (_db.delete(_db.sales)
-                ..where((t) => t.id.isIn(sampleSaleIds)))
-              .go();
-        }
-
-        if (sampleProductIds.isNotEmpty) {
-          await (_db.delete(_db.saleItems)
-                ..where((t) => t.productId.isIn(sampleProductIds)))
-              .go();
-          await (_db.delete(_db.stockMovements)
-                ..where((t) => t.productId.isIn(sampleProductIds)))
-              .go();
-          await (_db.delete(_db.products)..where((t) => t.id.isIn(sampleProductIds))).go();
-        }
+        await _db.customStatement("DELETE FROM payments WHERE sale_id IN (SELECT id FROM sales WHERE invoice_no LIKE 'INV-SMPL-%');");
+        await _db.customStatement("DELETE FROM sale_items WHERE sale_id IN (SELECT id FROM sales WHERE invoice_no LIKE 'INV-SMPL-%');");
+        await _db.customStatement("DELETE FROM stock_movements WHERE ref_table = 'sales' AND ref_id IN (SELECT id FROM sales WHERE invoice_no LIKE 'INV-SMPL-%');");
+        await _db.customStatement("DELETE FROM sales WHERE invoice_no LIKE 'INV-SMPL-%';");
+        await _db.customStatement("DELETE FROM sale_items WHERE product_id IN (SELECT id FROM products WHERE name LIKE '[SAMPLE]%');");
+        await _db.customStatement("DELETE FROM stock_movements WHERE product_id IN (SELECT id FROM products WHERE name LIKE '[SAMPLE]%');");
+        await _db.customStatement("DELETE FROM products WHERE name LIKE '[SAMPLE]%';");
       });
 
       if (Get.isRegistered<AuditService>()) {
@@ -385,8 +379,8 @@ class DeveloperPanelController extends GetxController {
           entity: 'developer',
           detail: {
             'action': 'delete_sample_data',
-            'deletedProducts': deletedProducts,
-            'deletedSales': deletedSales,
+            'deletedProducts': initialProducts,
+            'deletedSales': initialSales,
           },
         );
       }
@@ -394,7 +388,7 @@ class DeveloperPanelController extends GetxController {
       await refreshData();
       _showFeedback(
         'Data Sampel Dihapus',
-        'Dihapus: $deletedProducts produk & $deletedSales transaksi sampel. Data asli tetap aman.',
+        'Dihapus: $initialProducts produk & $initialSales transaksi sampel. Data asli tetap aman.',
         backgroundColor: Colors.blue.shade800,
       );
     } catch (e) {

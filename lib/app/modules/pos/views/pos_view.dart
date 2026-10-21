@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import '../../../routes/app_pages.dart';
 
@@ -6,6 +7,7 @@ import '../../../core/printing/printer_manager.dart';
 import '../../../core/utils/app_exception.dart';
 import '../../../core/utils/currency_formatter.dart';
 import '../../../core/utils/date_formatter.dart';
+import '../../../core/widgets/confirm_dialog.dart';
 import '../../../core/widgets/error_state.dart';
 import '../../../core/widgets/loading_indicator.dart';
 import '../../../data/local/app_database.dart';
@@ -30,118 +32,164 @@ class PosView extends GetView<PosController> {
       );
     }
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Kasir (POS)'),
-        actions: [
-          // Scanner Kamera (Android Only)
-          if (controller.isCameraSupported)
-            IconButton(
-              tooltip: 'Scan Kamera',
-              icon: const Icon(Icons.qr_code_scanner),
-              onPressed: controller.scanWithCamera,
-            ),
+    return Obx(() {
+      final isCartEmpty = controller.cartItems.isEmpty;
 
-          // Buka Laci Kasir Manual
-          Obx(() {
-            if (!PrinterManager.to.cashDrawer.value || !PrinterManager.to.isHardwareConfigured) {
-              return const SizedBox.shrink();
-            }
-            return IconButton(
-              tooltip: 'Buka Laci Kasir',
-              icon: const Icon(Icons.point_of_sale_outlined),
-              onPressed: controller.openCashDrawer,
-            );
-          }),
-
-          // Keranjang Tertahan (Hold Carts)
-          Obx(() {
-            final count = controller.heldCarts.length;
-            return Stack(
-              alignment: Alignment.center,
-              children: [
-                IconButton(
-                  tooltip: 'Pesanan Tertahan ($count)',
-                  icon: const Icon(Icons.pause_circle_outline),
-                  onPressed: () => _showHeldCartsDialog(context),
-                ),
-                if (count > 0)
-                  Positioned(
-                    right: 6,
-                    top: 6,
-                    child: Container(
-                      padding: const EdgeInsets.all(4),
-                      decoration: const BoxDecoration(
-                        color: Colors.orange,
-                        shape: BoxShape.circle,
-                      ),
-                      child: Text(
-                        '$count',
-                        style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white),
-                      ),
-                    ),
-                  ),
-              ],
-            );
-          }),
-
-          // Riwayat Penjualan
-          if (controller.canViewHistory)
-            IconButton(
-              tooltip: 'Riwayat Penjualan',
-              icon: const Icon(Icons.history),
-              onPressed: () => Get.toNamed(Routes.SALES_HISTORY),
-            ),
-
-          // Pengaturan POS Cepat
-          IconButton(
-            tooltip: 'Pengaturan Kasir',
-            icon: const Icon(Icons.settings_outlined),
-            onPressed: () => _showPosSettingsDialog(context),
-          ),
-        ],
-      ),
-      body: LayoutBuilder(
-        builder: (context, constraints) {
-          final isDesktop = constraints.maxWidth >= 768;
-
-          if (isDesktop) {
-            return Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Panel Kiri: Katalog Produk & Pencarian
-                Expanded(
-                  flex: 6,
-                  child: _buildProductCatalogPane(context, theme),
-                ),
-                const VerticalDivider(width: 1),
-                // Panel Kanan: Keranjang & Pembayaran
-                SizedBox(
-                  width: 360,
-                  child: _buildCartPane(context, theme, isDesktop: true),
-                ),
-              ],
-            );
-          }
-
-          // Tampilan Mobile: Produk di atas, Cart bar di bawah
-          return Stack(
-            children: [
-              Positioned.fill(
-                bottom: 72,
-                child: _buildProductCatalogPane(context, theme),
-              ),
-              Positioned(
-                left: 0,
-                right: 0,
-                bottom: 0,
-                child: _buildMobileBottomBar(context, theme),
-              ),
-            ],
+      return PopScope(
+        canPop: isCartEmpty,
+        onPopInvokedWithResult: (didPop, result) async {
+          if (didPop) return;
+          final shouldLeave = await ConfirmDialog.show(
+            context: context,
+            title: 'Keranjang Masih Berisi',
+            message:
+                'Masih ada barang di keranjang belanja. Apakah Anda yakin ingin keluar dari kasir?',
+            confirmText: 'Keluar',
+            cancelText: 'Tetap di Kasir',
+            isDestructive: true,
           );
+          if (shouldLeave && context.mounted) {
+            Navigator.of(context).pop();
+          }
         },
-      ),
-    );
+        child: CallbackShortcuts(
+          bindings: {
+            const SingleActivator(LogicalKeyboardKey.f2): () {
+              if (controller.cartItems.isNotEmpty && !controller.isSaving.value) {
+                _showPaymentDialog(context);
+              }
+            },
+            const SingleActivator(LogicalKeyboardKey.f3): () {
+              controller.refocusSearch();
+            },
+            const SingleActivator(LogicalKeyboardKey.escape): () {
+              if (controller.searchController.text.isNotEmpty) {
+                controller.clearSearch();
+              }
+            },
+          },
+          child: Focus(
+            autofocus: true,
+            child: Scaffold(
+              appBar: AppBar(
+                title: const Text('Kasir (POS)'),
+                actions: [
+                  // Scanner Kamera (Android Only)
+                  if (controller.isCameraSupported)
+                    IconButton(
+                      tooltip: 'Scan Kamera',
+                      icon: const Icon(Icons.qr_code_scanner),
+                      onPressed: () => _handleCameraScan(context),
+                    ),
+
+                  // Buka Laci Kasir Manual
+                  Obx(() {
+                    if (!PrinterManager.to.cashDrawer.value ||
+                        !PrinterManager.to.isHardwareConfigured) {
+                      return const SizedBox.shrink();
+                    }
+                    return IconButton(
+                      tooltip: 'Buka Laci Kasir',
+                      icon: const Icon(Icons.point_of_sale_outlined),
+                      onPressed: controller.openCashDrawer,
+                    );
+                  }),
+
+                  // Keranjang Tertahan (Hold Carts)
+                  Obx(() {
+                    final count = controller.heldCarts.length;
+                    return Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        IconButton(
+                          tooltip: 'Pesanan Tertahan ($count)',
+                          icon: const Icon(Icons.pause_circle_outline),
+                          onPressed: () => _showHeldCartsDialog(context),
+                        ),
+                        if (count > 0)
+                          Positioned(
+                            right: 6,
+                            top: 6,
+                            child: Container(
+                              padding: const EdgeInsets.all(4),
+                              decoration: const BoxDecoration(
+                                color: Colors.orange,
+                                shape: BoxShape.circle,
+                              ),
+                              child: Text(
+                                '$count',
+                                style: const TextStyle(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.white),
+                              ),
+                            ),
+                          ),
+                      ],
+                    );
+                  }),
+
+                  // Riwayat Penjualan
+                  if (controller.canViewHistory)
+                    IconButton(
+                      tooltip: 'Riwayat Penjualan',
+                      icon: const Icon(Icons.history),
+                      onPressed: () => Get.toNamed(Routes.SALES_HISTORY),
+                    ),
+
+                  // Pengaturan POS Cepat
+                  IconButton(
+                    tooltip: 'Pengaturan Kasir',
+                    icon: const Icon(Icons.settings_outlined),
+                    onPressed: () => _showPosSettingsDialog(context),
+                  ),
+                ],
+              ),
+              body: LayoutBuilder(
+                builder: (context, constraints) {
+                  final isDesktop = constraints.maxWidth >= 768;
+
+                  if (isDesktop) {
+                    return Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Panel Kiri: Katalog Produk & Pencarian
+                        Expanded(
+                          flex: 6,
+                          child: _buildProductCatalogPane(context, theme),
+                        ),
+                        const VerticalDivider(width: 1),
+                        // Panel Kanan: Keranjang & Pembayaran
+                        SizedBox(
+                          width: 360,
+                          child: _buildCartPane(context, theme, isDesktop: true),
+                        ),
+                      ],
+                    );
+                  }
+
+                  // Tampilan Mobile: Produk di atas, Cart bar di bawah
+                  return Stack(
+                    children: [
+                      Positioned.fill(
+                        bottom: 72,
+                        child: _buildProductCatalogPane(context, theme),
+                      ),
+                      Positioned(
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        child: _buildMobileBottomBar(context, theme),
+                      ),
+                    ],
+                  );
+                },
+              ),
+            ),
+          ),
+        ),
+      );
+    });
   }
 
   // ==========================================
@@ -382,6 +430,18 @@ class PosView extends GetView<PosController> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        if (!isDesktop)
+          Center(
+            child: Container(
+              margin: const EdgeInsets.only(top: 8, bottom: 4),
+              width: 36,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.grey.shade400,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          ),
         // Header Keranjang
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -389,10 +449,10 @@ class PosView extends GetView<PosController> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Obx(() => Text(
-                    'Keranjang (${controller.totalItemsQty})',
+                    'Keranjang (${controller.totalItemsQty} Item)',
                     style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
                   )),
-              Row(
+              Obx(() => Row(
                 children: [
                   IconButton(
                     tooltip: 'Tahan Pesanan (Hold)',
@@ -406,8 +466,14 @@ class PosView extends GetView<PosController> {
                     icon: const Icon(Icons.delete_sweep_outlined, size: 20),
                     onPressed: controller.cartItems.isNotEmpty ? controller.clearCart : null,
                   ),
+                  if (!isDesktop)
+                    IconButton(
+                      tooltip: 'Tutup',
+                      icon: const Icon(Icons.close, size: 20),
+                      onPressed: () => Get.back(),
+                    ),
                 ],
-              ),
+              )),
             ],
           ),
         ),
@@ -594,6 +660,43 @@ class PosView extends GetView<PosController> {
               ],
             );
           }),
+
+          // Pajak (PPN)
+          Obx(() {
+            if (!controller.taxEnabled.value || controller.taxRateBps.value <= 0) {
+              return const SizedBox.shrink();
+            }
+            final result = controller.taxResult;
+            final isInclusive = result.mode == 'inclusive';
+            final label = isInclusive
+                ? 'Termasuk ${controller.taxName.value} (${result.ratePercentString})'
+                : '${controller.taxName.value} (${result.ratePercentString})';
+
+            return Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    label,
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontStyle: isInclusive ? FontStyle.italic : FontStyle.normal,
+                      color: isInclusive ? Colors.grey.shade600 : null,
+                    ),
+                  ),
+                  Text(
+                    formatRupiah(result.tax),
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: isInclusive ? FontWeight.normal : FontWeight.bold,
+                      color: isInclusive ? Colors.grey.shade600 : null,
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }),
           const SizedBox(height: 8),
 
           // Total Akhir
@@ -663,9 +766,10 @@ class PosView extends GetView<PosController> {
       ),
       child: Row(
         children: [
-          // Badge & Ringkasan Cepat
+          // Badge & Ringkasan Cepat (Dapat diketuk untuk membuka keranjang)
           Expanded(
             child: InkWell(
+              borderRadius: BorderRadius.circular(8),
               onTap: () => _showMobileCartSheet(context),
               child: Obx(() => Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -679,6 +783,8 @@ class PosView extends GetView<PosController> {
                             '${controller.totalItemsQty} Item',
                             style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
                           ),
+                          const SizedBox(width: 4),
+                          Icon(Icons.keyboard_arrow_up, size: 16, color: theme.colorScheme.primary),
                         ],
                       ),
                       Text(
@@ -694,13 +800,30 @@ class PosView extends GetView<PosController> {
             ),
           ),
 
-          // Tombol Buka Keranjang / Bayar
+          // Tombol Buka Keranjang & Tombol Bayar
           Obx(() {
             final hasItems = controller.cartItems.isNotEmpty;
-            return FilledButton.icon(
-              onPressed: hasItems ? () => _showPaymentDialog(context) : null,
-              icon: const Icon(Icons.arrow_forward),
-              label: const Text('Bayar'),
+            return Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                OutlinedButton.icon(
+                  onPressed: hasItems ? () => _showMobileCartSheet(context) : null,
+                  icon: const Icon(Icons.shopping_bag_outlined, size: 18),
+                  label: Text('Keranjang (${controller.cartItems.length})'),
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                FilledButton.icon(
+                  onPressed: hasItems ? () => _showPaymentDialog(context) : null,
+                  icon: const Icon(Icons.arrow_forward),
+                  label: const Text('Bayar'),
+                  style: FilledButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  ),
+                ),
+              ],
             );
           }),
         ],
@@ -709,6 +832,7 @@ class PosView extends GetView<PosController> {
   }
 
   void _showMobileCartSheet(BuildContext context) {
+    if (Get.isBottomSheetOpen == true) return;
     Get.bottomSheet(
       Container(
         height: MediaQuery.of(context).size.height * 0.75,
@@ -719,6 +843,214 @@ class PosView extends GetView<PosController> {
         child: _buildCartPane(context, Theme.of(context), isDesktop: false),
       ),
       isScrollControlled: true,
+    );
+  }
+
+  // ==========================================
+  // SCAN KAMERA & DIALOG JUMLAH (PROMPT KOREKSI)
+  // ==========================================
+
+  Future<void> _handleCameraScan(BuildContext context) async {
+    final code = await controller.scanWithCamera();
+    if (code == null || code.trim().isEmpty) return;
+
+    final product = controller.findProductByBarcode(code);
+    if (product == null) {
+      controller.notifyProductNotFound(code);
+      return;
+    }
+
+    if (controller.isProductLocked(product)) {
+      controller.notifyProductLocked(product);
+      return;
+    }
+
+    if (context.mounted) {
+      _showCameraQuantityDialog(context, product);
+    }
+  }
+
+  void _showCameraQuantityDialog(BuildContext context, Product product) {
+    final qty = 1.obs;
+    final qtyCtrl = TextEditingController(text: '1');
+    final existing = controller.cartItems.firstWhereOrNull((i) => i.product.id == product.id);
+    final inCartQty = existing?.qty.value ?? 0;
+    final currentStock = product.currentStock;
+    final isStockConstrained = !controller.allowNegativeStock.value;
+
+    Get.dialog(
+      Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 380),
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // Header
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).colorScheme.primaryContainer,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Icon(
+                        Icons.qr_code_scanner,
+                        color: Theme.of(context).colorScheme.onPrimaryContainer,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            product.name,
+                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            '${formatRupiah(product.sellPrice)} • Stok: $currentStock${inCartQty > 0 ? " (di keranjang: $inCartQty)" : ""}',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: currentStock <= 0 ? Colors.red : Colors.grey.shade700,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 20),
+
+                // Stepper & Direct Input
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    IconButton.filledTonal(
+                      onPressed: () {
+                        if (qty.value > 1) {
+                          qty.value--;
+                          qtyCtrl.text = '${qty.value}';
+                        }
+                      },
+                      icon: const Icon(Icons.remove),
+                    ),
+                    const SizedBox(width: 16),
+                    SizedBox(
+                      width: 90,
+                      child: TextField(
+                        controller: qtyCtrl,
+                        keyboardType: TextInputType.number,
+                        textAlign: TextAlign.center,
+                        inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                        style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                        decoration: const InputDecoration(
+                          border: OutlineInputBorder(),
+                          contentPadding: EdgeInsets.symmetric(vertical: 8),
+                        ),
+                        onChanged: (val) {
+                          final parsed = int.tryParse(val) ?? 1;
+                          if (parsed > 0) {
+                            qty.value = parsed;
+                          }
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    IconButton.filledTonal(
+                      onPressed: () {
+                        if (isStockConstrained && (inCartQty + qty.value + 1) > currentStock) {
+                          Get.snackbar(
+                            'Batas Stok Tercapai',
+                            'Stok produk hanya $currentStock unit.',
+                            snackPosition: SnackPosition.BOTTOM,
+                            duration: const Duration(seconds: 2),
+                          );
+                          return;
+                        }
+                        qty.value++;
+                        qtyCtrl.text = '${qty.value}';
+                      },
+                      icon: const Icon(Icons.add),
+                    ),
+                  ],
+                ),
+
+                const SizedBox(height: 24),
+
+                // Tombol Aksi
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () => Get.back(),
+                        child: const Text('Batal'),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      flex: 2,
+                      child: FilledButton(
+                        onPressed: () {
+                          final count = int.tryParse(qtyCtrl.text) ?? qty.value;
+                          if (count <= 0) return;
+                          if (isStockConstrained && (inCartQty + count) > currentStock) {
+                            Get.snackbar(
+                              'Batas Stok Tercapai',
+                              'Stok produk hanya $currentStock unit.',
+                              snackPosition: SnackPosition.BOTTOM,
+                              duration: const Duration(seconds: 2),
+                            );
+                            return;
+                          }
+                          controller.addCartItemWithQty(product, count);
+                          Get.back();
+                          if (MediaQuery.of(context).size.width < 768) {
+                            _showMobileCartSheet(context);
+                          }
+                        },
+                        child: const Text('Tambah'),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                FilledButton.tonalIcon(
+                  onPressed: () {
+                    final count = int.tryParse(qtyCtrl.text) ?? qty.value;
+                    if (count <= 0) return;
+                    if (isStockConstrained && (inCartQty + count) > currentStock) {
+                      Get.snackbar(
+                        'Batas Stok Tercapai',
+                        'Stok produk hanya $currentStock unit.',
+                        snackPosition: SnackPosition.BOTTOM,
+                        duration: const Duration(seconds: 2),
+                      );
+                      return;
+                    }
+                    controller.addCartItemWithQty(product, count);
+                    Get.back();
+                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                      if (context.mounted) {
+                        _handleCameraScan(context);
+                      }
+                    });
+                  },
+                  icon: const Icon(Icons.qr_code_scanner, size: 18),
+                  label: const Text('Tambah & scan lagi'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 
@@ -813,6 +1145,7 @@ class PosView extends GetView<PosController> {
                                         child: TextField(
                                           controller: row.controller,
                                           keyboardType: TextInputType.number,
+                                          inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                                           decoration: const InputDecoration(
                                             border: OutlineInputBorder(),
                                             isDense: true,
@@ -996,6 +1329,7 @@ class PosView extends GetView<PosController> {
         content: TextField(
           controller: controllerText,
           keyboardType: TextInputType.number,
+          inputFormatters: [FilteringTextInputFormatter.digitsOnly],
           autofocus: true,
           decoration: const InputDecoration(
             labelText: 'Nominal Diskon per Unit (Rp)',
@@ -1008,6 +1342,7 @@ class PosView extends GetView<PosController> {
             onPressed: () {
               controller.setItemDiscount(item, 0);
               Get.back();
+              controller.refocusSearch();
             },
             child: const Text('Hapus Diskon'),
           ),
@@ -1016,12 +1351,13 @@ class PosView extends GetView<PosController> {
               final val = int.tryParse(controllerText.text) ?? 0;
               controller.setItemDiscount(item, val);
               Get.back();
+              controller.refocusSearch();
             },
             child: const Text('Simpan'),
           ),
         ],
       ),
-    );
+    ).then((_) => controller.refocusSearch());
   }
 
   void _showOverallDiscountDialog(BuildContext context) {
@@ -1059,6 +1395,7 @@ class PosView extends GetView<PosController> {
             Obx(() => TextField(
                   controller: controllerText,
                   keyboardType: TextInputType.number,
+                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                   autofocus: true,
                   decoration: InputDecoration(
                     labelText: isPercent.value ? 'Persentase Diskon (%)' : 'Nominal Diskon (Rp)',
@@ -1074,6 +1411,7 @@ class PosView extends GetView<PosController> {
             onPressed: () {
               controller.setOverallDiscount(0);
               Get.back();
+              controller.refocusSearch();
             },
             child: const Text('Hapus Diskon'),
           ),
@@ -1082,12 +1420,13 @@ class PosView extends GetView<PosController> {
               final val = int.tryParse(controllerText.text) ?? 0;
               controller.setOverallDiscount(val, isPercent: isPercent.value);
               Get.back();
+              controller.refocusSearch();
             },
             child: const Text('Terapkan'),
           ),
         ],
       ),
-    );
+    ).then((_) => controller.refocusSearch());
   }
 
   void _showDirectQtyDialog(BuildContext context, PosCartItem item) {
@@ -1099,6 +1438,7 @@ class PosView extends GetView<PosController> {
         content: TextField(
           controller: controllerText,
           keyboardType: TextInputType.number,
+          inputFormatters: [FilteringTextInputFormatter.digitsOnly],
           autofocus: true,
           decoration: const InputDecoration(
             labelText: 'Jumlah Kuantitas',
@@ -1106,18 +1446,25 @@ class PosView extends GetView<PosController> {
           ),
         ),
         actions: [
-          TextButton(onPressed: () => Get.back(), child: const Text('Batal')),
+          TextButton(
+            onPressed: () {
+              Get.back();
+              controller.refocusSearch();
+            },
+            child: const Text('Batal'),
+          ),
           FilledButton(
             onPressed: () {
               final qty = int.tryParse(controllerText.text) ?? 1;
               controller.updateQty(item, qty);
               Get.back();
+              controller.refocusSearch();
             },
             child: const Text('Ubah'),
           ),
         ],
       ),
-    );
+    ).then((_) => controller.refocusSearch());
   }
 
   // ==========================================

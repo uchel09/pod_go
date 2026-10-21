@@ -14,6 +14,7 @@ class TierFeatureMatrix {
     Feature.importExport,
     Feature.fullReports,
     Feature.autoBackup,
+    Feature.expenses,
   };
 
   /// Himpunan fitur tambahan yang hanya terbuka untuk tier Premium (Tim & Multi-device)

@@ -16,6 +16,7 @@ import '../../../core/services/audit_service.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/services/feature_gate.dart';
 import '../../../core/services/scanner/scanner_service.dart';
+import '../../../core/tax/tax_calculator.dart';
 import '../../../core/utils/app_exception.dart';
 import '../../../core/utils/device_id_service.dart';
 import '../../../data/local/app_database.dart';
@@ -86,6 +87,12 @@ class PosController extends GetxController {
   final overallDiscountValue = 0.obs;
   final isOverallDiscountPercent = false.obs;
 
+  // Pajak (PPN)
+  final taxEnabled = false.obs;
+  final taxName = 'PPN'.obs;
+  final taxRateBps = 0.obs; // 1100 = 11%
+  final taxMode = 'exclusive'.obs; // 'exclusive' | 'inclusive'
+
   final lastCheckoutResult = Rxn<CheckoutResult>();
   final isLoading = true.obs;
 
@@ -93,8 +100,17 @@ class PosController extends GetxController {
   /// [processCheckout] menolak panggilan kedua (anti transaksi ganda).
   final isSaving = false.obs;
 
-  /// Fokus kolom cari/scan; dipakai tombol "Transaksi Baru".
+  /// Fokus kolom cari/scan; dipakai tombol "Transaksi Baru" dan kasir cepat.
   final searchFocusNode = FocusNode();
+
+  /// Mengembalikan fokus ke kolom cari/scan setelah setiap aksi kasir di Windows.
+  void refocusSearch() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (searchFocusNode.canRequestFocus) {
+        searchFocusNode.requestFocus();
+      }
+    });
+  }
 
   // Permissions & Limits
   bool get canSell => PermissionService.to.can(PermissionKeys.posSell);
@@ -147,23 +163,51 @@ class PosController extends GetxController {
   }
 
   Future<void> _loadSettings() async {
-    // 1. Izinkan Stok Minus
-    final negStockVal = await _settingsRepo.getSetting('pos.allow_negative_stock');
-    allowNegativeStock.value = negStockVal == 'true';
+    try {
+      // 1. Izinkan Stok Minus
+      final negStockVal = await _settingsRepo.getSetting('pos.allow_negative_stock');
+      allowNegativeStock.value = negStockVal == 'true';
 
-    // 2. Lebar Struk
-    final rWidth = await _settingsRepo.getSetting('pos.receipt_width');
-    if (rWidth != null && (rWidth == '58' || rWidth == '80')) {
-      receiptWidth.value = rWidth;
+      // 2. Lebar Struk
+      final rWidth = await _settingsRepo.getSetting('pos.receipt_width');
+      if (rWidth != null && (rWidth == '58' || rWidth == '80')) {
+        receiptWidth.value = rWidth;
+      }
+
+      // 3. Produk Favorit
+      final favStr = await _settingsRepo.getSetting('pos.favorite_product_ids');
+      if (favStr != null && favStr.isNotEmpty) {
+        try {
+          final decoded = jsonDecode(favStr) as List;
+          favoriteProductIds.assignAll(decoded.map((e) => e as int).toSet());
+        } catch (_) {}
+      }
+
+      // 4. Pengaturan Pajak (PPN)
+      await reloadTaxSettings();
+    } catch (_) {
+      // Mengabaikan kegagalan baca setting saat inisialisasi / teardown tes
     }
+  }
 
-    // 3. Produk Favorit
-    final favStr = await _settingsRepo.getSetting('pos.favorite_product_ids');
-    if (favStr != null && favStr.isNotEmpty) {
-      try {
-        final decoded = jsonDecode(favStr) as List;
-        favoriteProductIds.assignAll(decoded.map((e) => e as int).toSet());
-      } catch (_) {}
+  /// Memuat ulang pengaturan pajak terkini dari database
+  Future<void> reloadTaxSettings() async {
+    try {
+      final tEnabled = await _settingsRepo.getSetting('tax.enabled');
+      taxEnabled.value = tEnabled == 'true';
+
+      final tName = await _settingsRepo.getSetting('tax.name');
+      taxName.value = (tName != null && tName.isNotEmpty) ? tName : 'PPN';
+
+      final tRate = await _settingsRepo.getSetting('tax.rate_bps');
+      taxRateBps.value = tRate != null ? (int.tryParse(tRate) ?? 0) : 0;
+
+      final tMode = await _settingsRepo.getSetting('tax.mode');
+      taxMode.value = (tMode != null && (tMode == 'exclusive' || tMode == 'inclusive'))
+          ? tMode
+          : 'exclusive';
+    } catch (_) {
+      // Mengabaikan error jika database sedang ditutup
     }
   }
 
@@ -181,6 +225,9 @@ class PosController extends GetxController {
     TextButton? mainButton,
   }) {
     if (Get.context != null) {
+      if (Get.isSnackbarOpen) {
+        Get.closeCurrentSnackbar();
+      }
       Get.snackbar(
         title,
         message,
@@ -191,28 +238,57 @@ class PosController extends GetxController {
     }
   }
 
-  /// Menangani barcode dari hardware HID USB/Bluetooth atau Kamera
+  Product? findProductByBarcode(String code) {
+    final query = code.trim().toLowerCase();
+    return allProducts.firstWhereOrNull((p) {
+      final barcodeMatch = p.barcode?.toLowerCase() == query;
+      final internalMatch = p.internalCode?.toLowerCase() == query;
+      final skuMatch = p.sku?.toLowerCase() == query;
+      return barcodeMatch || internalMatch || skuMatch;
+    });
+  }
+
+  void notifyProductNotFound(String code) {
+    _notify(
+      'Produk Tidak Terdaftar',
+      'Kode barcode "$code" belum terdaftar di toko.',
+      snackPosition: SnackPosition.BOTTOM,
+      duration: const Duration(seconds: 4),
+      mainButton: canEditProduct
+          ? TextButton(
+              onPressed: () => Get.toNamed(Routes.PRODUCTS),
+              child: const Text('DAFTARKAN', style: TextStyle(color: Colors.yellow, fontWeight: FontWeight.bold)),
+            )
+          : null,
+    );
+  }
+
+  void notifyProductLocked(Product product) {
+    _notify(
+      'Produk Terkunci',
+      'Produk "${product.name}" terkunci oleh batas tier dan tidak dapat dijual.',
+      snackPosition: SnackPosition.BOTTOM,
+    );
+  }
+
+  /// Menangani barcode dari hardware HID USB/Bluetooth (Scan otomatis +1 tanpa dialog)
   void onBarcodeScanned(String code) {
     if (!canSell) {
       _notify('Akses Ditolak', 'Anda tidak memiliki izin kasir (pos.sell).');
       return;
     }
 
-    final query = code.trim().toLowerCase();
-    final match = allProducts.firstWhereOrNull((p) {
-      final barcodeMatch = p.barcode?.toLowerCase() == query;
-      final internalMatch = p.internalCode?.toLowerCase() == query;
-      final skuMatch = p.sku?.toLowerCase() == query;
-      return barcodeMatch || internalMatch || skuMatch;
-    });
+    if (searchController.text.isNotEmpty) {
+      searchController.clear();
+      searchQuery.value = '';
+    }
+
+    final match = findProductByBarcode(code);
 
     if (match != null) {
       if (isProductLocked(match)) {
-        _notify(
-          'Produk Terkunci',
-          'Produk "${match.name}" terkunci oleh batas tier dan tidak dapat dijual.',
-          snackPosition: SnackPosition.BOTTOM,
-        );
+        notifyProductLocked(match);
+        refocusSearch();
         return;
       }
       addToCart(match);
@@ -223,19 +299,9 @@ class PosController extends GetxController {
         duration: const Duration(seconds: 1),
       );
     } else {
-      _notify(
-        'Produk Tidak Terdaftar',
-        'Kode barcode "$code" belum terdaftar di toko.',
-        snackPosition: SnackPosition.BOTTOM,
-        duration: const Duration(seconds: 4),
-        mainButton: canEditProduct
-            ? TextButton(
-                onPressed: () => Get.toNamed(Routes.PRODUCTS),
-                child: const Text('DAFTARKAN', style: TextStyle(color: Colors.yellow, fontWeight: FontWeight.bold)),
-              )
-            : null,
-      );
+      notifyProductNotFound(code);
     }
+    refocusSearch();
   }
 
   int _getCartItemQty(int productId) {
@@ -318,37 +384,41 @@ class PosController extends GetxController {
 
   // --- Operasi Keranjang Belanja ---
 
-  void addToCart(Product product) {
+  void addCartItemWithQty(Product product, int qtyToAdd) {
     if (!canSell) {
       _notify('Akses Ditolak', 'Anda tidak memiliki hak akses kasir.');
       return;
     }
 
     if (isProductLocked(product)) {
-      _notify(
-        'Produk Terkunci',
-        'Produk "${product.name}" terkunci oleh batas tier lisensi.',
-        snackPosition: SnackPosition.BOTTOM,
-      );
+      notifyProductLocked(product);
       return;
     }
 
+    if (qtyToAdd <= 0) return;
+
     final existing = cartItems.firstWhereOrNull((i) => i.product.id == product.id);
     if (existing != null) {
-      updateQty(existing, existing.qty.value + 1);
+      updateQty(existing, existing.qty.value + qtyToAdd);
     } else {
       // Cek stok awal jika stok minus dilarang
-      if (!allowNegativeStock.value && product.currentStock <= 0) {
+      if (!allowNegativeStock.value && product.currentStock < qtyToAdd) {
         _notify(
-          'Stok Habis',
-          'Stok produk "${product.name}" kosong (${product.currentStock}). '
+          'Stok Tidak Cukup',
+          'Stok produk "${product.name}" hanya tersedia ${product.currentStock}. '
           'Aktifkan "Izinkan Stok Minus" di Pengaturan POS jika ingin melanjutkan.',
           snackPosition: SnackPosition.BOTTOM,
         );
         return;
       }
-      cartItems.add(PosCartItem(product: product, initialQty: 1));
+      cartItems.add(PosCartItem(product: product, initialQty: qtyToAdd));
+      cartItems.refresh();
     }
+    refocusSearch();
+  }
+
+  void addToCart(Product product) {
+    addCartItemWithQty(product, 1);
   }
 
   void updateQty(PosCartItem item, int newQty) {
@@ -364,20 +434,28 @@ class PosController extends GetxController {
         snackPosition: SnackPosition.BOTTOM,
       );
       item.qty.value = item.product.currentStock > 0 ? item.product.currentStock : 1;
+      cartItems.refresh();
+      refocusSearch();
       return;
     }
 
     item.qty.value = newQty;
+    cartItems.refresh();
+    refocusSearch();
   }
 
   void removeFromCart(PosCartItem item) {
     cartItems.remove(item);
+    cartItems.refresh();
+    refocusSearch();
   }
 
   void clearCart() {
     cartItems.clear();
+    cartItems.refresh();
     overallDiscountValue.value = 0;
     isOverallDiscountPercent.value = false;
+    refocusSearch();
   }
 
   void setItemDiscount(PosCartItem item, int discountRupiah) {
@@ -419,10 +497,22 @@ class PosController extends GetxController {
 
   int get totalDiscountAmount => itemsDiscountTotal + calculatedOverallDiscount;
 
-  int get finalTotalAmount {
-    final res = subtotalAmount - totalDiscountAmount;
-    return res > 0 ? res : 0;
+  /// Hasil perhitungan pajak berdasarkan subtotal dikurangi diskon
+  TaxCalculationResult get taxResult {
+    final netBasis = (subtotalAmount - totalDiscountAmount).clamp(0, 999999999999);
+    return TaxCalculator.calculate(
+      basis: netBasis,
+      rateBps: taxRateBps.value,
+      mode: taxMode.value,
+      isEnabled: taxEnabled.value,
+    );
   }
+
+  /// Nilai pajak (Rupiah integer)
+  int get taxAmount => taxResult.tax;
+
+  /// Total akhir transaksi yang harus dibayarkan pelanggan
+  int get finalTotalAmount => taxResult.total;
 
   int get totalItemsQty => cartItems.fold<int>(0, (sum, i) => sum + i.qty.value);
 
@@ -544,6 +634,9 @@ class PosController extends GetxController {
         items: checkoutItems,
         payments: payments,
         overallDiscount: calculatedOverallDiscount,
+        tax: taxAmount,
+        taxRateBps: taxEnabled.value ? taxRateBps.value : 0,
+        taxMode: taxEnabled.value ? taxMode.value : 'exclusive',
         allowNegativeStock: allowNegativeStock.value,
       );
 
@@ -592,6 +685,7 @@ class PosController extends GetxController {
         sale: result.sale,
         items: result.items,
         payments: result.payments,
+        taxName: taxName.value,
       );
 
       switch (receiptMode) {
@@ -666,10 +760,13 @@ class PosController extends GetxController {
     await _printerManager?.openCashDrawer();
   }
 
-  void scanWithCamera() async {
-    final code = await ScannerService.to.scanWithCamera();
-    if (code != null) {
-      onBarcodeScanned(code);
+  /// Membuka kamera scanner (khusus Android) dan mengembalikan kode barcode atau null.
+  /// Konsumsi barcode kasir kamera ditangani oleh dialog kuantitas di UI (View).
+  Future<String?> scanWithCamera() async {
+    if (!canSell) {
+      _notify('Akses Ditolak', 'Anda tidak memiliki izin kasir (pos.sell).');
+      return null;
     }
+    return await ScannerService.to.scanWithCamera();
   }
 }

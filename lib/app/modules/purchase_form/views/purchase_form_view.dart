@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
 
@@ -294,6 +295,7 @@ class PurchaseFormView extends GetView<PurchaseFormController> {
                   child: TextFormField(
                     initialValue: '${item.costPrice.value}',
                     keyboardType: TextInputType.number,
+                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                     decoration: const InputDecoration(
                       labelText: 'Harga Beli (Rp)',
                       border: OutlineInputBorder(),

@@ -465,6 +465,8 @@ class ReportsView extends GetView<ReportsController> {
                       _buildStockAlertsCard(context, report),
                     ],
                     const SizedBox(height: 20),
+                    _buildExpensesBreakdownCard(context, report),
+                    const SizedBox(height: 20),
                     _buildVoidSummaryCard(context, report),
                     const SizedBox(height: 32),
                   ],
@@ -670,17 +672,33 @@ class ReportsView extends GetView<ReportsController> {
 
     final cards = [
       _SummaryCard(
-        label: 'Total Omzet (Penjualan)',
-        value: formatRupiah(report.summary.omzet),
+        label: 'Penjualan Bersih (Omzet)',
+        value: formatRupiah(report.summary.netSales),
         icon: Icons.payments_outlined,
         color: theme.colorScheme.primary,
       ),
+      if (report.summary.totalReturns > 0) ...[
+        _SummaryCard(
+          label: 'Total Retur Penjualan',
+          value: '- ${formatRupiah(report.summary.totalReturns)}',
+          icon: Icons.assignment_return_outlined,
+          color: Colors.amber.shade900,
+        ),
+      ],
       _SummaryCard(
         label: 'Transaksi Selesai',
         value: '${report.summary.txCount} tx',
         icon: Icons.receipt_long_outlined,
         color: Colors.blue.shade700,
       ),
+      if (report.summary.returnCount > 0) ...[
+        _SummaryCard(
+          label: 'Transaksi Retur',
+          value: '${report.summary.returnCount} retur (${report.summary.itemsReturned} item)',
+          icon: Icons.replay_outlined,
+          color: Colors.deepOrange.shade700,
+        ),
+      ],
       _SummaryCard(
         label: 'Rata-rata / Transaksi',
         value: formatRupiah(report.avgTxValue),
@@ -693,9 +711,23 @@ class ReportsView extends GetView<ReportsController> {
         icon: Icons.shopping_bag_outlined,
         color: Colors.teal.shade700,
       ),
+      if (report.summary.tax > 0) ...[
+        _SummaryCard(
+          label: report.summary.taxRefund > 0 ? 'Pajak Bersih' : 'Total Pajak Terkumpul',
+          value: formatRupiah(report.summary.netTax),
+          icon: Icons.receipt_long,
+          color: Colors.purple.shade700,
+        ),
+        _SummaryCard(
+          label: 'Pendapatan Bersih',
+          value: formatRupiah(report.summary.netRevenue),
+          icon: Icons.account_balance_outlined,
+          color: Colors.teal.shade800,
+        ),
+      ],
       if (canProfit) ...[
         _SummaryCard(
-          label: 'Total HPP (Modal Terjual)',
+          label: 'Total HPP (Modal Bersih)',
           value: formatRupiah(report.summary.cogs ?? 0),
           icon: Icons.account_balance_wallet_outlined,
           color: Colors.orange.shade800,
@@ -706,9 +738,22 @@ class ReportsView extends GetView<ReportsController> {
           icon: Icons.trending_up,
           color: Colors.green.shade800,
         ),
+        if (report.summary.totalExpenses > 0 || report.summary.expenseCount > 0)
+          _SummaryCard(
+            label: 'Total Biaya Operasional',
+            value: formatRupiah(report.summary.totalExpenses),
+            icon: Icons.money_off_outlined,
+            color: Colors.red.shade800,
+          ),
+        _SummaryCard(
+          label: 'Laba Bersih',
+          value: formatRupiah(report.summary.netProfit ?? 0),
+          icon: Icons.account_balance,
+          color: (report.summary.netProfit ?? 0) >= 0 ? Colors.teal.shade800 : Colors.red.shade900,
+        ),
       ] else
         _SummaryCard(
-          label: 'Laba Kotor & HPP',
+          label: 'Laba & HPP',
           value: 'Terkunci',
           icon: Icons.lock_outline,
           color: Colors.grey.shade600,
@@ -1467,6 +1512,103 @@ class ReportsView extends GetView<ReportsController> {
                 ],
               ),
             ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildExpensesBreakdownCard(BuildContext context, FullReportData report) {
+    final theme = Theme.of(context);
+    final list = report.expenseCategoryBreakdown;
+    final total = report.summary.totalExpenses;
+
+    return Card(
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(14),
+        side: BorderSide(color: theme.colorScheme.outlineVariant),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                CircleAvatar(
+                  radius: 18,
+                  backgroundColor: Colors.red.shade100,
+                  child: Icon(Icons.money_off, color: Colors.red.shade800, size: 20),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Rincian Biaya Operasional per Kategori',
+                        style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold),
+                      ),
+                      Text(
+                        'Total: ${formatRupiah(total)} (${report.summary.expenseCount} pengeluaran)',
+                        style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            const Divider(),
+            if (list.isEmpty)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 16.0),
+                child: Center(
+                  child: Text(
+                    'Tidak ada catatan pengeluaran pada periode ini.',
+                    style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                  ),
+                ),
+              )
+            else
+              ...list.map((item) {
+                final pct = total > 0 ? (item.totalAmount / total * 100) : 0.0;
+                return Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 6.0),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          item.categoryName,
+                          style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+                        ),
+                      ),
+                      Text(
+                        '${item.count}x',
+                        style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                      ),
+                      const SizedBox(width: 16),
+                      Text(
+                        formatRupiah(item.totalAmount),
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          fontWeight: FontWeight.bold,
+                          color: Colors.red.shade800,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      SizedBox(
+                        width: 48,
+                        child: Text(
+                          '${pct.toStringAsFixed(1)}%',
+                          textAlign: TextAlign.end,
+                          style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              }),
           ],
         ),
       ),

@@ -19,7 +19,7 @@ class StockCardController extends GetxController {
 
   final selectedProductId = Rxn<int>();
   final selectedProduct = Rxn<Product>();
-  final selectedType = 'all'.obs; // 'all' | 'sale' | 'purchase' | 'opname' | 'void' | 'adjustment'
+  final selectedType = 'all'.obs; // 'all' | 'sale' | 'purchase' | 'opname' | 'void' | 'adjustment' | 'return'
   final selectedDateFilter = 'all'.obs; // 'all' | 'today' | 'yesterday' | '7days' | 'month' | 'custom'
   final customDateRange = Rx<DateTimeRange?>(null);
 

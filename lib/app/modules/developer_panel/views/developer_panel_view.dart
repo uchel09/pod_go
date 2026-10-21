@@ -33,7 +33,9 @@ class DeveloperPanelView extends GetView<DeveloperPanelController> {
                 constraints: const BoxConstraints(maxWidth: 500),
                 child: Card(
                   elevation: 0,
-                  color: theme.colorScheme.errorContainer.withValues(alpha: 0.3),
+                  color: theme.colorScheme.errorContainer.withValues(
+                    alpha: 0.3,
+                  ),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(16),
                     side: BorderSide(color: theme.colorScheme.error),
@@ -102,13 +104,18 @@ class DeveloperPanelView extends GetView<DeveloperPanelController> {
 
                       // Simulasi Skenario Pembayaran & Kedaluwarsa
                       _buildSectionTitle(
-                          context, '2. SIMULASI SKENARIO LISENSI & PEMBAYARAN'),
+                        context,
+                        '2. SIMULASI SKENARIO LISENSI & PEMBAYARAN',
+                      ),
                       const SizedBox(height: 10),
                       _buildScenarioControls(context),
                       const SizedBox(height: 24),
 
                       // Generator Data Dummy
-                      _buildSectionTitle(context, '3. GENERATOR DATA SAMPEL (DUMMY)'),
+                      _buildSectionTitle(
+                        context,
+                        '3. GENERATOR DATA SAMPEL (DUMMY)',
+                      ),
                       const SizedBox(height: 10),
                       _buildSampleDataControls(context),
                       const SizedBox(height: 28),
@@ -118,7 +125,9 @@ class DeveloperPanelView extends GetView<DeveloperPanelController> {
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           _buildSectionTitle(
-                              context, '4. 50 AUDIT LOG TERAKHIR'),
+                            context,
+                            '4. 50 AUDIT LOG TERAKHIR',
+                          ),
                           Text(
                             '${controller.auditLogs.length} entri',
                             style: theme.textTheme.bodySmall,
@@ -136,9 +145,7 @@ class DeveloperPanelView extends GetView<DeveloperPanelController> {
             if (controller.isLoading.value)
               Container(
                 color: Colors.black38,
-                child: const Center(
-                  child: CircularProgressIndicator(),
-                ),
+                child: const Center(child: CircularProgressIndicator()),
               ),
           ],
         );
@@ -184,10 +191,7 @@ class DeveloperPanelView extends GetView<DeveloperPanelController> {
                 const SizedBox(height: 2),
                 Text(
                   'Panel ini hanya aktif saat kSimulationMode = true. Semua manipulasi lisensi bersifat lokal.',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Colors.amber.shade900,
-                  ),
+                  style: TextStyle(fontSize: 12, color: Colors.amber.shade900),
                 ),
               ],
             ),
@@ -216,19 +220,17 @@ class DeveloperPanelView extends GetView<DeveloperPanelController> {
               backgroundColor: tier == Tier.premium
                   ? Colors.purple.shade100
                   : (tier == Tier.semi
-                      ? Colors.blue.shade100
-                      : Colors.grey.shade200),
+                        ? Colors.blue.shade100
+                        : Colors.grey.shade200),
               child: Icon(
                 tier == Tier.premium
                     ? Icons.workspace_premium
-                    : (tier == Tier.semi
-                        ? Icons.verified
-                        : Icons.storefront),
+                    : (tier == Tier.semi ? Icons.verified : Icons.storefront),
                 color: tier == Tier.premium
                     ? Colors.purple.shade800
                     : (tier == Tier.semi
-                        ? Colors.blue.shade800
-                        : Colors.grey.shade800),
+                          ? Colors.blue.shade800
+                          : Colors.grey.shade800),
               ),
             ),
             const SizedBox(width: 16),
@@ -297,7 +299,10 @@ class DeveloperPanelView extends GetView<DeveloperPanelController> {
       children: [
         OutlinedButton.icon(
           onPressed: () => controller.simulatePaymentFailure(),
-          icon: const Icon(Icons.credit_card_off_outlined, color: Colors.orange),
+          icon: const Icon(
+            Icons.credit_card_off_outlined,
+            color: Colors.orange,
+          ),
           label: const Text('Simulasi Gagal Bayar'),
         ),
         OutlinedButton.icon(
@@ -320,16 +325,40 @@ class DeveloperPanelView extends GetView<DeveloperPanelController> {
       runSpacing: 10,
       children: [
         FilledButton.icon(
-          onPressed: () => controller.generateSampleData(),
+          onPressed: () => controller.generateSampleData(
+            targetProducts: 50,
+            targetSales: 50,
+          ),
           icon: const Icon(Icons.add_shopping_cart),
-          label: const Text('Generate 50 Produk & Transaksi Sampel'),
+          label: const Text('Buat 50 Produk & Transaksi (Ringan)'),
+        ),
+        FilledButton.tonalIcon(
+          onPressed: () async {
+            final confirmed = await ConfirmDialog.show(
+              context: context,
+              title: 'Generate Skala Besar?',
+              message:
+                  'Akan membuat 2.000 produk dan 5.000 transaksi sampel untuk uji ketahanan dan performa.\n'
+                  'Proses ini memerlukan waktu beberapa detik.',
+              confirmText: 'Lanjutkan (Stres Test)',
+            );
+            if (confirmed == true) {
+              controller.generateSampleData(
+                targetProducts: 2000,
+                targetSales: 5000,
+              );
+            }
+          },
+          icon: const Icon(Icons.speed),
+          label: const Text('Buat 2.000 Produk & 5.000 Transaksi (Stres Test)'),
         ),
         OutlinedButton.icon(
           style: OutlinedButton.styleFrom(
             foregroundColor: Colors.red.shade700,
             side: BorderSide(color: Colors.red.shade300),
           ),
-          onPressed: controller.sampleProductCount.value == 0 &&
+          onPressed:
+              controller.sampleProductCount.value == 0 &&
                   controller.sampleSaleCount.value == 0
               ? null
               : () async {

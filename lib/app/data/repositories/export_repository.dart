@@ -691,6 +691,8 @@ class ExportRepository {
     if (data.isProfitVisible) {
       rows.add(['HPP (Harga Pokok Penjualan)', data.summary.cogs ?? 0]);
       rows.add(['Laba Kotor', data.summary.grossProfit ?? 0]);
+      rows.add(['Total Biaya Operasional', data.summary.totalExpenses]);
+      rows.add(['Laba Bersih', data.summary.netProfit ?? 0]);
     }
     rows.add([]);
 
@@ -814,6 +816,8 @@ class ExportRepository {
       if (data.isProfitVisible) ...[
         ['HPP (Harga Pokok Penjualan)', data.summary.cogs ?? 0],
         ['Laba Kotor', data.summary.grossProfit ?? 0],
+        ['Total Biaya Operasional', data.summary.totalExpenses],
+        ['Laba Bersih', data.summary.netProfit ?? 0],
       ],
       ['Jumlah Transaksi Void', data.voidSummary.voidCount],
       ['Total Nominal Void', data.voidSummary.totalVoidAmount],
@@ -978,6 +982,77 @@ class ExportRepository {
       rowCount: rows.length,
       format: format,
       type: ExportType.auditLog,
+    );
+  }
+
+  // =========================================================================
+  // 8. EKSPOR PENGELUARAN OPERASIONAL
+  // =========================================================================
+
+  Future<ExportResult> exportExpenses({
+    required ExportFormat format,
+    DateTime? from,
+    DateTime? to,
+    int? categoryId,
+    String? status,
+  }) async {
+    _assertExportAccess();
+
+    final entries = await _db.expenseDao.getExpensesPage(
+      limit: 1000000,
+      startDate: from,
+      endDate: to,
+      categoryId: categoryId,
+      status: status,
+    );
+
+    final headers = <String>[
+      'Tanggal',
+      'Kategori',
+      'Nominal',
+      'Metode Pembayaran',
+      'Status',
+      'Catatan',
+      'Dibuat Oleh',
+      'Alasan Void',
+      'Dibatalkan Oleh',
+    ];
+
+    final dateFmt = DateFormat('yyyy-MM-dd HH:mm:ss');
+    final rows = entries.map((e) {
+      return [
+        dateFmt.format(e.date.toLocal()),
+        e.categoryName,
+        e.amount,
+        e.paymentMethod,
+        e.status == 'void' ? 'Batal (Void)' : 'Aktif',
+        e.note ?? '',
+        e.createdByName,
+        e.voidReason ?? '',
+        e.voidedByName ?? '',
+      ];
+    }).toList();
+
+    final bytes = format == ExportFormat.csv
+        ? _encodeCsvWithBom([headers, ...rows])
+        : _encodeXlsx('Pengeluaran', headers, rows);
+
+    final fileName = _generateFileName(ExportType.expenses, format);
+    final rangeStr = _formatRangeString(from, to);
+
+    await _recordAudit(
+      type: ExportType.expenses.name,
+      format: format.name,
+      rowCount: rows.length,
+      range: rangeStr,
+    );
+
+    return ExportResult(
+      fileName: fileName,
+      bytes: bytes,
+      rowCount: rows.length,
+      format: format,
+      type: ExportType.expenses,
     );
   }
 

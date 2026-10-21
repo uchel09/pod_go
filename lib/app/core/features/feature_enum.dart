@@ -6,6 +6,7 @@ enum Feature {
   importExport,
   fullReports,
   autoBackup,
+  expenses,
   teamManagement,
   attendance,
   customRoles,
@@ -27,6 +28,8 @@ enum Feature {
         return 'Laporan Laba & Analisis Penuh';
       case Feature.autoBackup:
         return 'Pencadangan Otomatis';
+      case Feature.expenses:
+        return 'Pengeluaran Operasional';
       case Feature.teamManagement:
         return 'Multi-User & Tim Kasir';
       case Feature.attendance:

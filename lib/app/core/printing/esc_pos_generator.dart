@@ -197,7 +197,12 @@ class EscPosGenerator {
       bytes.addAll(_encodeLine('Telp: ${data.storePhone!}'));
     }
 
-    if (data.isReprint) {
+    if (data.isReturn) {
+      bytes.addAll(cmdAlignCenter);
+      bytes.addAll(cmdBoldOn);
+      bytes.addAll(_encodeLine('*** BUKTI RETUR PENJUALAN ***'));
+      bytes.addAll(cmdBoldOff);
+    } else if (data.isReprint) {
       bytes.addAll(cmdAlignCenter);
       bytes.addAll(cmdBoldOn);
       bytes.addAll(_encodeLine('*** SALINAN ***'));
@@ -209,7 +214,14 @@ class EscPosGenerator {
     bytes.addAll(_encodeLine(formatDivider(charsPerLine)));
 
     // 4. Informasi Transaksi
-    bytes.addAll(_encodeLine(formatRow2('No. Nota', data.invoiceNo, charsPerLine)));
+    if (data.isReturn) {
+      bytes.addAll(_encodeLine(formatRow2('No. Retur', data.returnNo ?? data.invoiceNo, charsPerLine)));
+      if (data.originInvoiceNo != null) {
+        bytes.addAll(_encodeLine(formatRow2('Nota Asal', data.originInvoiceNo!, charsPerLine)));
+      }
+    } else {
+      bytes.addAll(_encodeLine(formatRow2('No. Nota', data.invoiceNo, charsPerLine)));
+    }
     bytes.addAll(_encodeLine(formatRow2('Kasir', data.cashierName, charsPerLine)));
     final dateStr = '${_twoDigits(data.dateTime.day)}/${_twoDigits(data.dateTime.month)}/${data.dateTime.year} '
         '${_twoDigits(data.dateTime.hour)}:${_twoDigits(data.dateTime.minute)}';
@@ -231,6 +243,11 @@ class EscPosGenerator {
       final subtotalStr = _formatNumber(item.subtotal);
       bytes.addAll(_encodeLine(formatRow2(qtyPriceStr, subtotalStr, charsPerLine)));
 
+      // Keterangan kondisi barang jika retur
+      if (data.isReturn && !item.restock) {
+        bytes.addAll(_encodeLine('    (Barang Rusak - Tidak Restock)'));
+      }
+
       // Baris Diskon Item jika ada
       if (item.discount > 0) {
         final discStr = '-${_formatNumber(item.discount * item.qty)}';
@@ -242,16 +259,36 @@ class EscPosGenerator {
     bytes.addAll(_encodeLine(formatDivider(charsPerLine)));
 
     // 6. Ringkasan Total
-    bytes.addAll(_encodeLine(formatRow2('Subtotal', _formatNumber(data.subtotal), charsPerLine)));
+    final subtotalLabel = data.isReturn ? 'Subtotal Retur' : 'Subtotal';
+    bytes.addAll(_encodeLine(formatRow2(subtotalLabel, _formatNumber(data.subtotal), charsPerLine)));
 
     if (data.discount > 0) {
       bytes.addAll(_encodeLine(formatRow2('Diskon Nota', '-${_formatNumber(data.discount)}', charsPerLine)));
     }
 
-    // Total Belanja (Tebal)
+    if (data.tax > 0) {
+      final rateStr = data.taxRatePercentString.isNotEmpty ? ' (${data.taxRatePercentString})' : '';
+      final taxLabel = data.isReturn
+          ? 'Pajak Dikembalikan'
+          : '${data.taxName ?? 'PPN'}$rateStr';
+      bytes.addAll(_encodeLine(formatRow2(taxLabel, _formatNumber(data.tax), charsPerLine)));
+    }
+
+    // Total Belanja / Refund (Tebal)
     bytes.addAll(cmdBoldOn);
-    bytes.addAll(_encodeLine(formatRow2('TOTAL', _formatNumber(data.total), charsPerLine)));
+    final totalLabel = data.isReturn ? 'TOTAL REFUND' : 'TOTAL';
+    bytes.addAll(_encodeLine(formatRow2(totalLabel, _formatNumber(data.total), charsPerLine)));
     bytes.addAll(cmdBoldOff);
+
+    if (data.isReturn && data.returnReason != null && data.returnReason!.isNotEmpty) {
+      bytes.addAll(_encodeLine(formatRow2('Alasan', data.returnReason!, charsPerLine)));
+    }
+
+    if (data.tax > 0 && data.taxMode == 'inclusive' && !data.isReturn) {
+      final rateStr = data.taxRatePercentString.isNotEmpty ? ' ${data.taxRatePercentString}' : '';
+      final incNote = '(Termasuk ${data.taxName ?? 'PPN'}$rateStr)';
+      bytes.addAll(_encodeLine(formatRow2('', incNote, charsPerLine)));
+    }
 
     // Garis Pemisah Pembayaran
     bytes.addAll(_encodeLine(formatDivider(charsPerLine, '-')));

@@ -125,9 +125,14 @@ View  ──>  Controller  ──>  Repository  ──>  DAO / Local DB
 - Sumber tier lewat abstraksi EntitlementProvider (saat ini SimulatedEntitlementProvider). kSimulationMode di app_config.dart harus false sebelum rilis publik.
 - Turun tier: data tidak dihapus; produk di atas batas menjadi read-only.
 
-## 11. Pekerjaan Berikutnya
-- Retur sebagian (per item) belum dibuat.
-- Fase 2 (karyawan, absensi, host-client) dan fase 3 belum dikerjakan.
+## 11. Status Fase & Daftar Fitur yang Ditunda
+- **Status Proyek Saat Ini**: Fase 1 (Selesai & Dipoles). Mencakup Tier Gratis dan Semi-Premium pada satu perangkat (Windows & Android), Offline-First Drift SQLite, Kasir POS Cepat dengan pintasan keyboard, Struk Thermal ESC/POS & PDF, Impor/Ekspor CSV & Excel, Backup/Restore ZIP, Layar Lisensi & Panel Developer Simulasi.
+- **Fitur yang Ditunda (Fase 2 & Selanjutnya - Dilarang Dikerjakan di Fase 1)**:
+  1. Multi-user Tim (manajemen karyawan kasir lanjutan, multi-role karyawan, absensi, dan jam kerja).
+  2. Arsitektur Host-Client / sinkronisasi multi-kasir lokal.
+  3. Retur penjualan sebagian (partial item return / penukaran barang).
+  4. Perhitungan pajak dinamis (Tax) dan diskon bersyarat bertingkat (kolom skema `discount` & `tax` tetap dipakai di rumus dengan nilai 0).
+  5. Pengiriman instruksi cetak native TSPL/ZPL ke printer label barcode (saat ini memakai ekspor PDF label).
 
 ## 12. Aturan Jejak Audit (Audit Trail)
 - Log audit (`audit_logs`) bersifat append-only: AuditDao tidak memiliki method update maupun delete.
@@ -135,11 +140,17 @@ View  ──>  Controller  ──>  Repository  ──>  DAO / Local DB
 - Fitur ekspor log aktivitas akan disediakan pada Prompt 14.
 
 ## 13. Definisi Angka Laporan Keuangan
-- **Omzet**: Jumlah `sales.total` dari transaksi berstatus `completed` (transaksi `void` TIDAK dihitung).
-- **Pajak**: Jumlah `sales.tax` dari transaksi `completed`.
-- **Pendapatan Bersih**: `Omzet - Pajak`. (Catatan: diskon sudah memotong subtotal menjadi total di `sales.total`, sedangkan kolom `sales.discount` dan `sales.tax` akan bernilai 0 sampai fitur diskon/pajak aktif).
-- **HPP (Harga Pokok Penjualan)**: Jumlah `(qty * costPrice snapshot)` dari `sale_items` untuk transaksi `completed`.
-- **Laba Kotor**: `Pendapatan Bersih - HPP`.
+- **Omzet Bruto**: Jumlah `sales.total` dari transaksi berstatus `completed` (transaksi `void` TIDAK dihitung).
+- **Total Retur**: Jumlah `sale_returns.total` dari transaksi retur yang terjadi dalam periode.
+- **Penjualan Bersih (Net Sales)**: `Omzet Bruto - Total Retur`.
+- **Pajak Bersih (Net Tax)**: `Pajak Penjualan - Pajak Retur (tax_refund)`.
+- **Pendapatan Bersih**: `Penjualan Bersih - Pajak Bersih`. (Catatan: diskon sudah memotong subtotal menjadi total di `sales.total`, sedangkan kolom `sales.discount` bernilai 0 sampai fitur diskon aktif).
+- **HPP Bersih (Harga Pokok Penjualan)**: `HPP Penjualan - HPP Retur Restock`.
+  - HPP Retur HANYA dihitung untuk barang yang opsi restock = true.
+  - Barang rusak/tidak kembali ke stok (`restock = false`) TIDAK mengurangi HPP karena barang tersebut tetap hilang/menjadi beban inventaris.
+- **Laba Kotor**: `Pendapatan Bersih - HPP Bersih`.
+- **Pengeluaran Operasional (Expenses)**: Jumlah `expenses.amount` dari transaksi pengeluaran berstatus `active` dalam periode (transaksi `void` TIDAK dihitung).
+- **Laba Bersih**: `Laba Kotor - Pengeluaran Operasional`.
 - Rumus ini wajib konsisten di semua komponen: DAO, Repository, Dashboard, dan Laporan.
 
 ## 14. Aturan Impor Data (CSV & Excel)
@@ -158,6 +169,44 @@ View  ──>  Controller  ──>  Repository  ──>  DAO / Local DB
   - Kolom harga modal snapshot dan laba kotor pada transaksi penjualan dan laporan lengkap hanya disertakan jika memiliki izin `PermissionKeys.reportViewProfit`.
 - Ekspor jejak aktivitas pengguna (`audit_logs`) wajib memvalidasi izin `PermissionKeys.auditView`.
 - Setiap ekspor data dicatat secara otomatis ke `AuditService` dengan action `export.run` (merekam jenis entitas, format file, rentang tanggal, dan jumlah baris tanpa membocorkan data rahasia/finansial).
+
+## 16. Aturan Kustomisasi Pajak (PPN)
+- **Konfigurasi Toko**: Disimpan di `app_settings` (`tax_enabled`, `tax_name`, `tax_rate_bps`, `tax_mode`).
+- **Skema Basis Poin (BPS)**: Persentase disimpan sebagai integer (1100 = 11.00%), tanpa floating-point.
+- **Mode Pajak**:
+  - `exclusive`: Pajak ditambahkan di atas subtotal (`tax = round(subtotal * rate / 10000)`).
+  - `inclusive`: Harga item sudah termasuk pajak (`tax = total - round(total * 10000 / (10000 + rate))`).
+- **Izin**: Pengaturan pajak memerlukan `PermissionKeys.settingsManage`.
+
+## 17. Aturan Retur Penjualan (Per Item)
+- **Izin & Akses**: Memerlukan izin `PermissionKeys.posReturn` (`pos.return`, default untuk Owner dan Admin) yang diverifikasi di level Controller dan Repository.
+- **Nomor Retur**: Berurutan dengan format `RTN-YYYYMMDD-NNNN` (counter harian unik).
+- **Mutual Exclusion dengan Void**:
+  - Transaksi yang sudah memiliki minimal 1 retur TIDAK dapat dibatalkan (void).
+  - Transaksi yang sudah dibatalkan (void) TIDAK dapat diretur.
+- **Opsi Restock**:
+  - Ditentukan per item (`restock = true / false`).
+  - Jika `restock = true`, stok fisik bertambah melalui `StockRepository.applyMovement` bertipe `return`.
+  - Jika `restock = false`, stok fisik tidak berubah, dicatat di log audit dan database.
+- **Validasi Kuantitas & Nilai Refund**:
+  - Jumlah retur kumulatif per item tidak boleh melebihi kuantitas pembelian awal pada `sale_items`.
+  - Total pengembalian dana kumulatif tidak boleh melebihi nilai transaksi awal.
+  - Pajak dihitung ulang secara proporsional sesuai perbandingan subtotal yang diretur.
+- **Audit**: Setiap transaksi retur dicatat ke `audit_logs` dengan aksi `sale.return`.
+
+## 18. Aturan Pengeluaran Operasional & Laba Bersih
+- **Gating Lisensi**: Memerlukan lisensi Semi-Premium ke atas (`Feature.expenses`). Pada tier Gratis, menu pengeluaran diberi ikon gembok dan dialihkan ke layar penawaran upgrade (`FeatureGate.to.requireFeature`).
+- **Izin & Akses**:
+  - Melihat data pengeluaran memerlukan `PermissionKeys.expenseView` (`expense.view`).
+  - Mencatat, mengubah, membatalkan pengeluaran, serta mengelola kategori memerlukan `PermissionKeys.expenseManage` (`expense.manage`).
+- **Integritas Transaksi**:
+  - Pengeluaran tidak dapat dihapus permanen (hard-delete). Transaksi yang salah dibatalkan (void) dengan menyertakan alasan. Hanya pengeluaran berstatus `active` yang dihitung ke laporan keuangan.
+  - Perubahan nominal pengeluaran dicatat ke jejak audit (`expense.update`) beserta rincian nilai lama dan baru.
+  - Nominal pengeluaran wajib merupakan bilangan bulat positif Rupiah (`amount > 0`).
+- **Kategori Pengeluaran**:
+  - Kategori bawaan: Listrik, Air, Sewa, Gaji, Transport, Kemasan, Perawatan, Lainnya.
+  - Kategori yang sudah memiliki riwayat pengeluaran tidak dapat dihapus, namun dapat dinonaktifkan (`isActive = false`).
+- **Audit**: Setiap transaksi dicatat ke `audit_logs` dengan aksi `expense.create`, `expense.update`, atau `expense.void`.
 
 
 

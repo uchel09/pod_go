@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 
 import '../controllers/setup_controller.dart';
@@ -344,6 +345,7 @@ class SetupView extends GetView<SetupController> {
           TextFormField(
             controller: controller.pinController,
             keyboardType: TextInputType.number,
+            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
             obscureText: true,
             maxLength: 6,
             decoration: const InputDecoration(
@@ -356,6 +358,7 @@ class SetupView extends GetView<SetupController> {
           TextFormField(
             controller: controller.pinConfirmController,
             keyboardType: TextInputType.number,
+            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
             obscureText: true,
             maxLength: 6,
             decoration: const InputDecoration(

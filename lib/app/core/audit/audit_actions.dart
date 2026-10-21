@@ -29,6 +29,7 @@ abstract class AuditActions {
 
   // --- Penjualan (POS) ---
   static const saleVoid = 'sale.void';
+  static const saleReturn = 'sale.return';
   static const saleDiscountHigh = 'sale.discount_high';
 
   // --- Autentikasi & Akun Kasir ---
@@ -37,6 +38,11 @@ abstract class AuditActions {
   static const authLogout = 'auth.logout';
   static const authPasswordChanged = 'auth.password_changed';
   static const authRecoveryUsed = 'auth.recovery_used';
+
+  // --- Pengeluaran Operasional ---
+  static const expenseCreate = 'expense.create';
+  static const expenseUpdate = 'expense.update';
+  static const expenseVoid = 'expense.void';
 
   // --- Manajemen Pengguna / Karyawan (Fase 2) ---
   static const userCreate = 'user.create';
@@ -176,6 +182,13 @@ abstract class AuditActions {
         final r = d['reason'] ?? '-';
         return '$userName membatalkan (VOID) nota $inv (Alasan: $r)';
 
+      case saleReturn:
+        final inv = d['invoiceNo'] ?? '-';
+        final rtnNo = d['returnNo'] ?? '-';
+        final total = formatRupiah(d['total'] ?? d['totalRefund'] ?? 0);
+        final r = d['reason'] ?? '-';
+        return '$userName memproses retur $rtnNo untuk nota $inv sebesar $total (Alasan: $r)';
+
       case saleDiscountHigh:
         final inv = d['invoiceNo'] ?? '-';
         final disc = formatRupiah(d['discount'] ?? 0);
@@ -196,6 +209,26 @@ abstract class AuditActions {
 
       case authRecoveryUsed:
         return '$userName menggunakan kode pemulihan darurat';
+
+      case expenseCreate:
+        final cat = d['category'] ?? d['categoryName'] ?? 'Operasional';
+        final amt = formatRupiah(d['amount'] ?? 0);
+        return '$userName mencatat pengeluaran $cat sebesar $amt';
+
+      case expenseUpdate:
+        final cat = d['category'] ?? d['categoryName'] ?? 'Operasional';
+        final amt = formatRupiah(d['amount'] ?? 0);
+        final oldAmt = d['oldAmount'] != null ? formatRupiah(d['oldAmount'] ?? 0) : null;
+        if (oldAmt != null && oldAmt != amt) {
+          return '$userName mengubah pengeluaran $cat dari $oldAmt menjadi $amt';
+        }
+        return '$userName memperbarui data pengeluaran $cat ($amt)';
+
+      case expenseVoid:
+        final cat = d['category'] ?? d['categoryName'] ?? 'Operasional';
+        final amt = formatRupiah(d['amount'] ?? 0);
+        final reason = d['reason'] ?? '-';
+        return '$userName membatalkan pengeluaran $cat sebesar $amt (Alasan: $reason)';
 
       case settingsUpdate:
         final keys = d['updatedKeys'] ?? d['keys'] ?? 'konfigurasi';

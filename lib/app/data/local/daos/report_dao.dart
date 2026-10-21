@@ -2,14 +2,32 @@ import 'package:drift/drift.dart';
 import 'package:intl/intl.dart';
 
 import '../app_database.dart';
+import 'expense_dao.dart';
 
 /// Definisi Angka Laporan Keuangan POS Me (PROJECT_RULES.md Bagian 13):
-/// - Omzet = jumlah sales.total status completed
-/// - Pajak = sales.tax; Pendapatan bersih = omzet - pajak
-/// - HPP = jumlah (qty x costPrice snapshot) dari sale_items
-/// - Laba kotor = pendapatan bersih - HPP
+/// - Penjualan Bersih (Net Sales) = Omzet Bruto - Total Retur
+/// - Pajak Bersih = Pajak Penjualan - Pajak Retur
+/// - HPP Bersih = HPP Penjualan - HPP Retur Restock (hanya restock=true)
+/// - Laba Kotor = Pendapatan Bersih - HPP Bersih
+/// - Pengeluaran Operasional = Total expenses berstatus active
+/// - Laba Bersih = Laba Kotor - Pengeluaran Operasional
 class DashboardSummary {
-  /// Total omzet dari transaksi completed (Rupiah int)
+  /// Total omzet bruto dari transaksi completed (sebelum retur)
+  final int grossOmzet;
+
+  /// Total nominal retur dari sale_returns (Rupiah int)
+  final int totalReturns;
+
+  /// Jumlah transaksi retur
+  final int returnCount;
+
+  /// Total barang/item fisik yang diretur
+  final int itemsReturned;
+
+  /// Penjualan bersih = grossOmzet - totalReturns
+  final int netSales;
+
+  /// Alias omzet yang merefleksikan nilai setelah retur (Net Sales)
   final int omzet;
 
   /// Jumlah transaksi berstatus completed
@@ -18,48 +36,107 @@ class DashboardSummary {
   /// Total barang/item terjual dari transaksi completed
   final int itemsSold;
 
-  /// Total pajak dari transaksi completed
+  /// Total pajak bruto dari transaksi completed
   final int tax;
 
-  /// Pendapatan bersih = omzet - pajak
+  /// Total pengembalian pajak dari retur
+  final int taxRefund;
+
+  /// Pajak bersih = tax - taxRefund
+  final int netTax;
+
+  /// Pendapatan bersih = netSales - netTax
   final int netRevenue;
 
-  /// HPP (Harga Pokok Penjualan) = sum(qty * costPrice snapshot). Null bila tidak berizin report.view_profit.
+  /// HPP bersih (Harga Pokok Penjualan) = grossCogs - returnCogs (restock=true). Null bila tidak berizin report.view_profit.
   final int? cogs;
+
+  /// HPP bruto sebelum retur
+  final int? grossCogs;
+
+  /// HPP dari barang yang diretur dan di-restock
+  final int? returnCogs;
 
   /// Laba kotor = netRevenue - cogs. Null bila tidak berizin report.view_profit.
   final int? grossProfit;
 
+  /// Total pengeluaran operasional berstatus active dalam periode
+  final int totalExpenses;
+
+  /// Jumlah transaksi pengeluaran operasional
+  final int expenseCount;
+
+  /// Laba bersih = grossProfit - totalExpenses. Null bila tidak berizin report.view_profit.
+  final int? netProfit;
+
   const DashboardSummary({
     required this.omzet,
+    int? grossOmzet,
+    this.totalReturns = 0,
+    this.returnCount = 0,
+    this.itemsReturned = 0,
+    int? netSales,
     required this.txCount,
     required this.itemsSold,
     required this.tax,
+    this.taxRefund = 0,
+    int? netTax,
     required this.netRevenue,
     this.cogs,
+    this.grossCogs,
+    this.returnCogs,
     this.grossProfit,
-  });
+    this.totalExpenses = 0,
+    this.expenseCount = 0,
+    this.netProfit,
+  })  : grossOmzet = grossOmzet ?? omzet,
+        netSales = netSales ?? omzet,
+        netTax = netTax ?? (tax - taxRefund);
 
   DashboardSummary copyWithProfitHidden() {
     return DashboardSummary(
       omzet: omzet,
+      grossOmzet: grossOmzet,
+      totalReturns: totalReturns,
+      returnCount: returnCount,
+      itemsReturned: itemsReturned,
+      netSales: netSales,
       txCount: txCount,
       itemsSold: itemsSold,
       tax: tax,
+      taxRefund: taxRefund,
+      netTax: netTax,
       netRevenue: netRevenue,
       cogs: null,
+      grossCogs: null,
+      returnCogs: null,
       grossProfit: null,
+      totalExpenses: totalExpenses,
+      expenseCount: expenseCount,
+      netProfit: null,
     );
   }
 
   static const empty = DashboardSummary(
     omzet: 0,
+    grossOmzet: 0,
+    totalReturns: 0,
+    returnCount: 0,
+    itemsReturned: 0,
+    netSales: 0,
     txCount: 0,
     itemsSold: 0,
     tax: 0,
+    taxRefund: 0,
+    netTax: 0,
     netRevenue: 0,
     cogs: 0,
+    grossCogs: 0,
+    returnCogs: 0,
     grossProfit: 0,
+    totalExpenses: 0,
+    expenseCount: 0,
+    netProfit: 0,
   );
 }
 
@@ -300,8 +377,15 @@ class ReportDao extends DatabaseAccessor<AppDatabase> {
   $PaymentsTable get payments => db.payments;
   $UsersTable get users => db.users;
 
+  Future<List<ExpenseCategoryAggregate>> getExpenseCategoryBreakdown({
+    required DateTime from,
+    required DateTime to,
+  }) =>
+      attachedDatabase.expenseDao.getExpenseCategoryBreakdown(from: from, to: to);
+
   /// Ringkasan angka agregat dalam rentang [from, to) waktu lokal.
   /// Memakai index sales.createdAt. Transaksi void TIDAK dihitung.
+  /// Memperhitungkan pengurangan retur penjualan dan pengembalian HPP restock.
   Future<DashboardSummary> getSummaryForRange({
     required DateTime from,
     required DateTime to,
@@ -321,8 +405,8 @@ class ReportDao extends DatabaseAccessor<AppDatabase> {
     ).getSingleOrNull();
 
     final txCount = salesRow?.read<int>('tx_count') ?? 0;
-    final omzet = salesRow?.read<int>('total_omzet') ?? 0;
-    final tax = salesRow?.read<int>('total_tax') ?? 0;
+    final grossOmzet = salesRow?.read<int>('total_omzet') ?? 0;
+    final grossTax = salesRow?.read<int>('total_tax') ?? 0;
 
     // 2. Agregat item dan HPP dari snapshot sale_items
     final itemsRow = await customSelect(
@@ -339,23 +423,90 @@ class ReportDao extends DatabaseAccessor<AppDatabase> {
     ).getSingleOrNull();
 
     final itemsSold = itemsRow?.read<int>('total_items') ?? 0;
-    final cogs = itemsRow?.read<int>('total_cogs') ?? 0;
-    final netRevenue = omzet - tax;
-    final grossProfit = netRevenue - cogs;
+    final grossCogs = itemsRow?.read<int>('total_cogs') ?? 0;
+
+    // 3. Agregat retur dari tabel sale_returns
+    final returnsRow = await customSelect(
+      'SELECT '
+      'COUNT(*) AS return_count, '
+      'COALESCE(SUM(total), 0) AS total_returns, '
+      'COALESCE(SUM(tax_refund), 0) AS total_tax_refund '
+      'FROM sale_returns '
+      'WHERE created_at >= ? '
+      '  AND created_at < ?',
+      variables: [Variable<DateTime>(from), Variable<DateTime>(to)],
+      readsFrom: {db.saleReturns},
+    ).getSingleOrNull();
+
+    final returnCount = returnsRow?.read<int>('return_count') ?? 0;
+    final totalReturns = returnsRow?.read<int>('total_returns') ?? 0;
+    final taxRefund = returnsRow?.read<int>('total_tax_refund') ?? 0;
+
+    // 4. Agregat item retur dan HPP retur (HANYA barang dengan restock = 1)
+    final returnItemsRow = await customSelect(
+      'SELECT '
+      'COALESCE(SUM(sri.qty), 0) AS returned_items, '
+      'COALESCE(SUM(CASE WHEN sri.restock = 1 THEN sri.qty * sri.cost_price ELSE 0 END), 0) AS return_cogs '
+      'FROM sale_return_items sri '
+      'INNER JOIN sale_returns sr ON sri.return_id = sr.id '
+      'WHERE sr.created_at >= ? '
+      '  AND sr.created_at < ?',
+      variables: [Variable<DateTime>(from), Variable<DateTime>(to)],
+      readsFrom: {db.saleReturns, db.saleReturnItems},
+    ).getSingleOrNull();
+
+    final itemsReturned = returnItemsRow?.read<int>('returned_items') ?? 0;
+    final returnCogs = returnItemsRow?.read<int>('return_cogs') ?? 0;
+
+    // 5. Agregat pengeluaran operasional (HANYA status active)
+    final expensesRow = await customSelect(
+      'SELECT '
+      'COUNT(*) AS expense_count, '
+      'COALESCE(SUM(amount), 0) AS total_expenses '
+      'FROM expenses '
+      "WHERE status = 'active' "
+      '  AND date >= ? '
+      '  AND date < ?',
+      variables: [Variable<DateTime>(from), Variable<DateTime>(to)],
+      readsFrom: {db.expenses},
+    ).getSingleOrNull();
+
+    final expenseCount = expensesRow?.read<int>('expense_count') ?? 0;
+    final totalExpenses = expensesRow?.read<int>('total_expenses') ?? 0;
+
+    // 6. Perhitungan keuangan bersih konsisten (PROJECT_RULES.md Bagian 13)
+    final netSales = grossOmzet - totalReturns;
+    final netTax = grossTax - taxRefund;
+    final netRevenue = netSales - netTax;
+    final netCogs = grossCogs - returnCogs;
+    final grossProfit = netRevenue - netCogs;
+    final netProfit = grossProfit - totalExpenses;
 
     return DashboardSummary(
-      omzet: omzet,
+      omzet: netSales,
+      grossOmzet: grossOmzet,
+      totalReturns: totalReturns,
+      returnCount: returnCount,
+      itemsReturned: itemsReturned,
+      netSales: netSales,
       txCount: txCount,
       itemsSold: itemsSold,
-      tax: tax,
+      tax: grossTax,
+      taxRefund: taxRefund,
+      netTax: netTax,
       netRevenue: netRevenue,
-      cogs: cogs,
+      cogs: netCogs,
+      grossCogs: grossCogs,
+      returnCogs: returnCogs,
       grossProfit: grossProfit,
+      totalExpenses: totalExpenses,
+      expenseCount: expenseCount,
+      netProfit: netProfit,
     );
   }
 
   /// Data grafik omzet 7 hari terakhir (atau rentang [from, to)).
-  /// Hasil query diagregasi per hari berdasar waktu lokal perangkat.
+  /// Hasil query diagregasi per hari berdasar waktu lokal perangkat (dikurangi retur).
   Future<List<DailyRevenuePoint>> getRevenueChartDays({
     required DateTime from,
     required DateTime to,
@@ -382,6 +533,22 @@ class ReportDao extends DatabaseAccessor<AppDatabase> {
       map[day] = (omzet: omzet, txCount: txCount);
     }
 
+    final returnRows = await customSelect(
+      "SELECT strftime('%Y-%m-%d', created_at, 'unixepoch', 'localtime') AS day, "
+      'COALESCE(SUM(total), 0) AS return_amount '
+      'FROM sale_returns '
+      'WHERE created_at >= ? '
+      '  AND created_at < ? '
+      'GROUP BY day',
+      variables: [Variable<DateTime>(from), Variable<DateTime>(to)],
+      readsFrom: {db.saleReturns},
+    ).get();
+
+    final returnMap = <String, int>{};
+    for (final r in returnRows) {
+      returnMap[r.read<String>('day')] = r.read<int>('return_amount');
+    }
+
     // Bangun deretan hari lengkap agar tidak ada gap tanggal
     final points = <DailyRevenuePoint>[];
     DateTime cursor = DateTime(from.year, from.month, from.day);
@@ -390,11 +557,14 @@ class ReportDao extends DatabaseAccessor<AppDatabase> {
     while (cursor.isBefore(endLimit)) {
       final dayStr = DateFormat('yyyy-MM-dd').format(cursor);
       final entry = map[dayStr];
+      final dayReturns = returnMap[dayStr] ?? 0;
+      final gross = entry?.omzet ?? 0;
+      final net = gross - dayReturns;
       points.add(
         DailyRevenuePoint(
           dateStr: dayStr,
           date: cursor,
-          omzet: entry?.omzet ?? 0,
+          omzet: net,
           txCount: entry?.txCount ?? 0,
         ),
       );
@@ -438,7 +608,7 @@ class ReportDao extends DatabaseAccessor<AppDatabase> {
   }
 
   /// Rekap penjualan harian untuk rentang [from, to) (misal 30 hari terakhir).
-  /// Diurutkan tanggal terbaru di atas (DESC).
+  /// Diurutkan tanggal terbaru di atas (DESC), diperhitungkan nilai retur per hari.
   Future<List<DailySalesReportEntry>> getDailySalesReports({
     required DateTime from,
     required DateTime to,
@@ -457,14 +627,32 @@ class ReportDao extends DatabaseAccessor<AppDatabase> {
       readsFrom: {sales},
     ).get();
 
+    final returnRows = await customSelect(
+      "SELECT strftime('%Y-%m-%d', created_at, 'unixepoch', 'localtime') AS day, "
+      'COALESCE(SUM(total), 0) AS return_amount '
+      'FROM sale_returns '
+      'WHERE created_at >= ? '
+      '  AND created_at < ? '
+      'GROUP BY day',
+      variables: [Variable<DateTime>(from), Variable<DateTime>(to)],
+      readsFrom: {db.saleReturns},
+    ).get();
+
+    final returnMap = <String, int>{};
+    for (final r in returnRows) {
+      returnMap[r.read<String>('day')] = r.read<int>('return_amount');
+    }
+
     return rows.map((row) {
       final dayStr = row.read<String>('day');
       final date = DateTime.tryParse(dayStr) ?? DateTime.now();
+      final dayReturns = returnMap[dayStr] ?? 0;
+      final gross = row.read<int>('omzet');
       return DailySalesReportEntry(
         day: dayStr,
         date: date,
         txCount: row.read<int>('tx_count'),
-        omzet: row.read<int>('omzet'),
+        omzet: gross - dayReturns,
       );
     }).toList();
   }

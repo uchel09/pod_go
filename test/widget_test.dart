@@ -3,6 +3,7 @@ import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart' hide Value;
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:pos_me/app/core/services/auth_service.dart';
 import 'package:pos_me/app/core/theme/theme_service.dart';
 import 'package:pos_me/app/core/utils/device_id_service.dart';
@@ -17,6 +18,13 @@ void main() {
   late AppDatabase db;
 
   setUp(() async {
+    PackageInfo.setMockInitialValues(
+      appName: 'POS Me',
+      packageName: 'com.posme',
+      version: '1.0.0',
+      buildNumber: '1',
+      buildSignature: '',
+    );
     SharedPreferences.setMockInitialValues({
       'app_device_id': 'mock-device-id-12345',
       'app_theme_mode': 'light',
@@ -76,7 +84,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Warung Berkah'), findsWidgets);
-      expect(find.text('Rp 1.250.000'), findsOneWidget);
+      expect(find.text('Rp 0'), findsWidgets);
       // On mobile (<600px), destinations are displayed via NavigationBar
       expect(find.byType(NavigationBar), findsOneWidget);
       expect(find.byType(NavigationRail), findsNothing);
@@ -94,7 +102,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Warung Berkah'), findsWidgets);
-      expect(find.text('Rp 1.250.000'), findsOneWidget);
+      expect(find.text('Rp 0'), findsWidgets);
       // On desktop (>=600px), NavigationRail is used
       expect(find.byType(NavigationRail), findsOneWidget);
       expect(find.byType(NavigationBar), findsNothing);

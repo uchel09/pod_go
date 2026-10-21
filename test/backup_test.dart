@@ -209,7 +209,7 @@ void main() {
 
       final metaString = utf8.decode(metaEntry!.content as List<int>);
       final metaMap = jsonDecode(metaString) as Map<String, dynamic>;
-      expect(metaMap['schemaVersion'], 2);
+      expect(metaMap['schemaVersion'], db.schemaVersion);
       expect(metaMap['storeName'], 'Toko Sukses Makmur');
       expect(metaMap['productCount'], 2);
       expect(metaMap['transactionCount'], 1);
@@ -301,7 +301,7 @@ void main() {
       // 4. Validasi berkas backup
       final preview = await backupRepo.validateBackupForRestore(backupFile);
       expect(preview.backupMetadata.storeName, 'Toko Sukses Makmur');
-      expect(preview.backupMetadata.schemaVersion, 2);
+      expect(preview.backupMetadata.schemaVersion, db.schemaVersion);
 
       // 5. Eksekusi restore ke target file
       await backupRepo.executeRestore(preview, customTargetDbFile: testTargetDb);
@@ -367,8 +367,8 @@ void main() {
       final invalidPreview = RestorePreview(
         fileName: 'invalid.zip',
         fileSize: 100,
-        backupMetadata: const BackupMetadata(
-          schemaVersion: 2,
+        backupMetadata: BackupMetadata(
+          schemaVersion: db.schemaVersion,
           appVersion: '1.0.0',
           timestamp: '2026-01-01',
           storeName: 'Test',

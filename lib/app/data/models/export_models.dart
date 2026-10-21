@@ -23,7 +23,8 @@ enum ExportType {
   stockOpname,
   purchases,
   fullReport,
-  auditLog;
+  auditLog,
+  expenses;
 
   String get displayName {
     switch (this) {
@@ -41,6 +42,8 @@ enum ExportType {
         return 'Laporan Lengkap Komprehensif';
       case ExportType.auditLog:
         return 'Log Jejak Aktivitas (Audit)';
+      case ExportType.expenses:
+        return 'Pengeluaran Operasional';
     }
   }
 
@@ -60,6 +63,8 @@ enum ExportType {
         return 'laporan_lengkap';
       case ExportType.auditLog:
         return 'log_aktivitas';
+      case ExportType.expenses:
+        return 'pengeluaran_operasional';
     }
   }
 }

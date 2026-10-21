@@ -12,6 +12,8 @@ class Sales extends Table {
   IntColumn get subtotal => integer().withDefault(const Constant(0))(); // Rupiah int
   IntColumn get discount => integer().withDefault(const Constant(0))(); // Rupiah int
   IntColumn get tax => integer().withDefault(const Constant(0))(); // Rupiah int
+  IntColumn get taxRateBps => integer().nullable()(); // Snapshot tarif pajak saat checkout (basis poin, 1100 = 11%)
+  TextColumn get taxMode => text().nullable()(); // 'exclusive' | 'inclusive'
   IntColumn get total => integer().withDefault(const Constant(0))(); // Rupiah int
   IntColumn get paid => integer().withDefault(const Constant(0))(); // Rupiah int
   IntColumn get change => integer().withDefault(const Constant(0))(); // Rupiah int

@@ -203,6 +203,35 @@ void main() {
       expect(scannerService.lastCode.value, 'P000123');
       expect(scannerService.lastSource.value, 'camera');
     });
+
+    test('Cooldown 1 detik: scan ganda kode identik ditolak, kode berbeda langsung diterima, dan jeda >1 detik diterima', () {
+      var fakeTime = DateTime(2026, 1, 1, 12, 0, 0);
+      final customService = ScannerService(
+        clock: () => fakeTime,
+        cooldownDuration: const Duration(seconds: 1),
+      );
+      final receivedCodes = <String>[];
+      customService.registerConsumer('test', receivedCodes.add);
+
+      // 1. Scan pertama kode A
+      customService.simulateScan('BARCODE-AAA');
+      expect(receivedCodes, ['BARCODE-AAA']);
+
+      // 2. Scan ganda kode A dalam 200 ms (deteksi ganda kamera/bounce) -> ditolak
+      fakeTime = fakeTime.add(const Duration(milliseconds: 200));
+      customService.simulateScan('BARCODE-AAA');
+      expect(receivedCodes, ['BARCODE-AAA'], reason: 'Scan ganda dalam 1 detik harus ditolak');
+
+      // 3. Scan kode B yang berbeda dalam 100 ms -> langsung diterima tanpa jeda
+      fakeTime = fakeTime.add(const Duration(milliseconds: 100));
+      customService.simulateScan('BARCODE-BBB');
+      expect(receivedCodes, ['BARCODE-AAA', 'BARCODE-BBB']);
+
+      // 4. Scan ulang barang A setelah jeda > 1 detik (1100 ms) -> diterima (+1)
+      fakeTime = fakeTime.add(const Duration(milliseconds: 1100));
+      customService.simulateScan('BARCODE-AAA');
+      expect(receivedCodes, ['BARCODE-AAA', 'BARCODE-BBB', 'BARCODE-AAA']);
+    });
   });
 }
 

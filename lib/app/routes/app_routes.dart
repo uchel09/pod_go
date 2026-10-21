@@ -32,6 +32,9 @@ abstract class Routes {
   static const IMPORT_WIZARD = _Paths.IMPORT_WIZARD;
   static const CHECKOUT_SIMULATION = _Paths.CHECKOUT_SIMULATION;
   static const DEVELOPER_PANEL = _Paths.DEVELOPER_PANEL;
+  static const SALE_RETURN = _Paths.SALE_RETURN;
+  static const EXPENSES = _Paths.EXPENSES;
+  static const EXPENSE_FORM = _Paths.EXPENSE_FORM;
 }
 
 abstract class _Paths {
@@ -64,4 +67,7 @@ abstract class _Paths {
   static const IMPORT_WIZARD = '/import-wizard';
   static const CHECKOUT_SIMULATION = '/checkout-simulation';
   static const DEVELOPER_PANEL = '/developer-panel';
+  static const SALE_RETURN = '/sale-return';
+  static const EXPENSES = '/expenses';
+  static const EXPENSE_FORM = '/expense-form';
 }

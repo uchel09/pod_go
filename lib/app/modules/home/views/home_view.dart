@@ -1,23 +1,20 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
 import '../../../core/config/app_config.dart';
 import '../../../core/features/feature_enum.dart';
-import '../../../core/features/tier_enum.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/services/feature_gate.dart';
 import '../../../core/theme/theme_service.dart';
 import '../../../core/permissions/permission_keys.dart';
 import '../../../core/permissions/permission_service.dart';
 import '../../../core/widgets/adaptive_scaffold.dart';
-import '../../../core/widgets/change_password_dialog.dart';
 import '../../../core/widgets/confirm_dialog.dart';
 import '../../../core/widgets/error_state.dart';
 import '../../../routes/app_pages.dart';
 import '../../dashboard/views/dashboard_view.dart';
-import '../../developer_panel/controllers/developer_panel_controller.dart';
 import '../../reports/views/reports_view.dart';
+import '../../settings/views/settings_view.dart';
 import '../controllers/home_controller.dart';
 
 class HomeView extends GetView<HomeController> {
@@ -62,9 +59,39 @@ class HomeView extends GetView<HomeController> {
         railTrailing: Obx(() {
           final hasPurchases = FeatureGate.to.isEnabled(Feature.purchases);
           final hasOpname = FeatureGate.to.isEnabled(Feature.stockOpname);
+          final hasExpenses = FeatureGate.to.isEnabled(Feature.expenses);
           return Column(
             mainAxisSize: MainAxisSize.min,
             children: [
+              IconButton(
+                tooltip: hasExpenses ? 'Pengeluaran Operasional' : 'Pengeluaran (Perlu Semi-Premium)',
+                icon: Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    const Icon(Icons.request_quote_outlined),
+                    if (!hasExpenses)
+                      Positioned(
+                        right: -4,
+                        bottom: -4,
+                        child: Container(
+                          padding: const EdgeInsets.all(1),
+                          decoration: const BoxDecoration(
+                            color: Colors.amber,
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(Icons.lock, size: 10, color: Colors.black87),
+                        ),
+                      ),
+                  ],
+                ),
+                onPressed: () {
+                  if (hasExpenses) {
+                    Get.toNamed(Routes.EXPENSES);
+                  } else {
+                    FeatureGate.to.requireFeature(Feature.expenses);
+                  }
+                },
+              ),
               IconButton(
                 tooltip: hasOpname ? 'Stock Opname' : 'Stock Opname (Perlu Semi-Premium)',
                 icon: Stack(
@@ -185,7 +212,14 @@ class HomeView extends GetView<HomeController> {
             onSelected: (val) {
               final hasPurchases = FeatureGate.to.isEnabled(Feature.purchases);
               final hasOpname = FeatureGate.to.isEnabled(Feature.stockOpname);
-              if (val == 'opname') {
+              final hasExpenses = FeatureGate.to.isEnabled(Feature.expenses);
+              if (val == 'expenses') {
+                if (hasExpenses) {
+                  Get.toNamed(Routes.EXPENSES);
+                } else {
+                  FeatureGate.to.requireFeature(Feature.expenses);
+                }
+              } else if (val == 'opname') {
                 if (hasOpname) {
                   Get.toNamed(Routes.STOCK_OPNAME);
                 } else {
@@ -216,9 +250,21 @@ class HomeView extends GetView<HomeController> {
             itemBuilder: (context) {
               final hasPurchases = FeatureGate.to.isEnabled(Feature.purchases);
               final hasOpname = FeatureGate.to.isEnabled(Feature.stockOpname);
+              final hasExpenses = FeatureGate.to.isEnabled(Feature.expenses);
               final hasImportExport = FeatureGate.to.isEnabled(Feature.importExport);
               final canBackup = PermissionService.to.can(PermissionKeys.backupManage);
               return [
+                PopupMenuItem(
+                  value: 'expenses',
+                  child: Row(
+                    children: [
+                      const Icon(Icons.request_quote_outlined, size: 18),
+                      const SizedBox(width: 8),
+                      const Expanded(child: Text('Pengeluaran Operasional')),
+                      if (!hasExpenses) const Icon(Icons.lock, size: 14, color: Colors.amber),
+                    ],
+                  ),
+                ),
                 PopupMenuItem(
                   value: 'opname',
                   child: Row(
@@ -298,7 +344,7 @@ class HomeView extends GetView<HomeController> {
             _buildSalesTab(context),
             _buildProductsTab(context),
             const ReportsView(),
-            _buildSettingsTab(context),
+            const SettingsView(isEmbeddedInHome: true),
           ],
         ),
       ),
@@ -387,7 +433,46 @@ class HomeView extends GetView<HomeController> {
                     onTap: () => Get.toNamed(Routes.SALES_HISTORY),
                   ),
                 ),
+                const SizedBox(height: 16),
               ],
+              Card(
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  side: BorderSide(color: theme.colorScheme.outlineVariant),
+                ),
+                child: ListTile(
+                  contentPadding: const EdgeInsets.all(16),
+                  leading: CircleAvatar(
+                    radius: 24,
+                    backgroundColor: Colors.red.shade50,
+                    child: Icon(Icons.request_quote_outlined, color: Colors.red.shade800),
+                  ),
+                  title: Row(
+                    children: [
+                      const Expanded(
+                        child: Text('Pengeluaran Operasional', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                      ),
+                      Obx(() {
+                        final hasExpenses = FeatureGate.to.isEnabled(Feature.expenses);
+                        if (!hasExpenses) {
+                          return const Icon(Icons.lock, size: 16, color: Colors.amber);
+                        }
+                        return const SizedBox.shrink();
+                      }),
+                    ],
+                  ),
+                  subtitle: const Text('Catat biaya sewa, listrik, air, gaji, kemasan, dan biaya operasional lainnya.'),
+                  trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+                  onTap: () {
+                    if (FeatureGate.to.isEnabled(Feature.expenses)) {
+                      Get.toNamed(Routes.EXPENSES);
+                    } else {
+                      FeatureGate.to.requireFeature(Feature.expenses);
+                    }
+                  },
+                ),
+              ),
             ],
           ),
         ),
@@ -678,325 +763,6 @@ class HomeView extends GetView<HomeController> {
                       FeatureGate.to.requireFeature(Feature.purchases);
                     }
                   },
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  /// Tab 4: Pengaturan Aplikasi & Sistem
-  Widget _buildSettingsTab(BuildContext context) {
-    final store = AuthService.to.currentStore.value;
-    final user = AuthService.to.currentUser.value;
-    final requireLogin = AuthService.to.requireLogin;
-    final theme = Theme.of(context);
-
-    return Center(
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.all(24.0),
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 550),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(
-                'Pengaturan',
-                style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                'Konfigurasi toko, perangkat keras pencetak & pemindai, serta keamanan akun.',
-                style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-              ),
-              const SizedBox(height: 20),
-
-              // Kelompok 1: Profil Toko & Pengguna
-              Text(
-                'PROFIL TOKO & AKUN KASIR',
-                style: theme.textTheme.labelMedium?.copyWith(
-                  fontWeight: FontWeight.bold,
-                  color: theme.colorScheme.primary,
-                ),
-              ),
-              const SizedBox(height: 10),
-              Card(
-                elevation: 0,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  side: BorderSide(color: theme.colorScheme.outlineVariant),
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Column(
-                    children: [
-                      ListTile(
-                        contentPadding: EdgeInsets.zero,
-                        leading: const CircleAvatar(child: Icon(Icons.storefront)),
-                        title: Text(store?.name ?? 'Nama Toko', style: const TextStyle(fontWeight: FontWeight.bold)),
-                        subtitle: Text('Mode: ${store?.mode.toUpperCase() ?? 'SOLO'} | Login: ${requireLogin ? 'Wajib' : 'Opsional'}'),
-                      ),
-                      if (user != null) ...[
-                        const Divider(),
-                        ListTile(
-                          contentPadding: EdgeInsets.zero,
-                          leading: const CircleAvatar(child: Icon(Icons.account_circle_outlined)),
-                          title: Text(user.displayName, style: const TextStyle(fontWeight: FontWeight.bold)),
-                          subtitle: Text('@${user.username}'),
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(height: 12),
-              FilledButton.tonalIcon(
-                onPressed: () => ThemeService.to.switchTheme(),
-                icon: const Icon(Icons.brightness_6),
-                label: const Text('Ganti Tema (Light / Dark)'),
-              ),
-              if (user != null && requireLogin) ...[
-                const SizedBox(height: 10),
-                OutlinedButton.icon(
-                  onPressed: () => ChangePasswordDialog.show(context),
-                  icon: const Icon(Icons.key_outlined),
-                  label: const Text('Ganti Password / PIN'),
-                ),
-              ],
-
-              const SizedBox(height: 24),
-              // Kelompok 2: Perangkat Keras (Hardware)
-              Text(
-                'PERANGKAT KERAS (HARDWARE)',
-                style: theme.textTheme.labelMedium?.copyWith(
-                  fontWeight: FontWeight.bold,
-                  color: theme.colorScheme.primary,
-                ),
-              ),
-              const SizedBox(height: 10),
-              if (PermissionService.to.can(PermissionKeys.settingsManage)) ...[
-                Card(
-                  elevation: 0,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    side: BorderSide(color: theme.colorScheme.outlineVariant),
-                  ),
-                  child: ListTile(
-                    leading: const CircleAvatar(child: Icon(Icons.print_outlined)),
-                    title: const Text('Printer Thermal & Struk', style: TextStyle(fontWeight: FontWeight.bold)),
-                    subtitle: const Text('Konfigurasi Bluetooth, USB Windows, LAN, atau PDF'),
-                    trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-                    onTap: () => Get.toNamed(Routes.PRINTER_SETTINGS),
-                  ),
-                ),
-                const SizedBox(height: 10),
-              ],
-              Card(
-                elevation: 0,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  side: BorderSide(color: theme.colorScheme.outlineVariant),
-                ),
-                child: ListTile(
-                  leading: const CircleAvatar(child: Icon(Icons.qr_code_scanner)),
-                  title: const Text('Uji & Diagnostik Scanner', style: TextStyle(fontWeight: FontWeight.bold)),
-                  subtitle: const Text('Tes scanner HID USB/Bluetooth dan kamera Android'),
-                  trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-                  onTap: () => Get.toNamed(Routes.SCANNER_TEST),
-                ),
-              ),
-
-              const SizedBox(height: 24),
-              // Kelompok 3: Keamanan & Jejak Audit
-              Text(
-                'KEAMANAN & AUDIT SISTEM',
-                style: theme.textTheme.labelMedium?.copyWith(
-                  fontWeight: FontWeight.bold,
-                  color: theme.colorScheme.primary,
-                ),
-              ),
-              const SizedBox(height: 10),
-              if (PermissionService.to.can(PermissionKeys.auditView)) ...[
-                Card(
-                  elevation: 0,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    side: BorderSide(color: theme.colorScheme.outlineVariant),
-                  ),
-                  child: ListTile(
-                    leading: const CircleAvatar(child: Icon(Icons.history_edu_outlined)),
-                    title: const Text('Riwayat Aktivitas (Audit Log)', style: TextStyle(fontWeight: FontWeight.bold)),
-                    subtitle: const Text('Lihat rekam jejak pengguna, perubahan harga produk, dan sistem'),
-                    trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-                    onTap: () => Get.toNamed(Routes.ACTIVITY_LOG),
-                  ),
-                ),
-                const SizedBox(height: 16),
-              ],
-
-              if (PermissionService.to.can(PermissionKeys.backupManage)) ...[
-                Text(
-                  'PENCADANGAN DATA (BACKUP)',
-                  style: theme.textTheme.labelMedium?.copyWith(
-                    fontWeight: FontWeight.bold,
-                    color: theme.colorScheme.primary,
-                  ),
-                ),
-                const SizedBox(height: 10),
-                Card(
-                  elevation: 0,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    side: BorderSide(color: theme.colorScheme.outlineVariant),
-                  ),
-                  child: ListTile(
-                    leading: const CircleAvatar(child: Icon(Icons.backup_outlined)),
-                    title: const Text('Backup Data Usaha', style: TextStyle(fontWeight: FontWeight.bold)),
-                    subtitle: const Text('Cadangkan seluruh database toko ke berkas ZIP'),
-                    trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-                    onTap: () => Get.toNamed(Routes.BACKUP),
-                  ),
-                ),
-                const SizedBox(height: 16),
-              ],
-
-              // Kelompok: Paket & Lisensi Toko
-              Text(
-                'PAKET & LISENSI FITUR',
-                style: theme.textTheme.labelMedium?.copyWith(
-                  fontWeight: FontWeight.bold,
-                  color: theme.colorScheme.primary,
-                ),
-              ),
-              const SizedBox(height: 10),
-              Obx(() {
-                final tier = FeatureGate.to.tier.value;
-                return Card(
-                  elevation: 0,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    side: BorderSide(color: theme.colorScheme.outlineVariant),
-                  ),
-                  child: ListTile(
-                    leading: CircleAvatar(
-                      backgroundColor: tier == Tier.premium
-                          ? Colors.purple.shade100
-                          : (tier == Tier.semi
-                              ? Colors.blue.shade100
-                              : Colors.grey.shade200),
-                      child: Icon(
-                        tier == Tier.premium
-                            ? Icons.workspace_premium
-                            : (tier == Tier.semi
-                                ? Icons.verified
-                                : Icons.storefront),
-                        color: tier == Tier.premium
-                            ? Colors.purple.shade800
-                            : (tier == Tier.semi
-                                ? Colors.blue.shade800
-                                : Colors.grey.shade800),
-                      ),
-                    ),
-                    title: const Text('Paket & Upgrade Aplikasi',
-                        style: TextStyle(fontWeight: FontWeight.bold)),
-                    subtitle: Text('Paket aktif saat ini: ${tier.displayName}'),
-                    trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-                    onTap: () => Get.toNamed(Routes.UPGRADE),
-                  ),
-                );
-              }),
-              const SizedBox(height: 16),
-
-              // Kelompok: Developer Panel (Mode Simulasi)
-              Obx(() {
-                final unlocked = DeveloperPanelController.isUnlocked.value;
-                final isSim = AppConfig.simulationMode;
-                final isDevAllowed = kDebugMode || unlocked;
-                if (!isSim || !isDevAllowed) return const SizedBox.shrink();
-
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Text(
-                      'PENGEMBANG (DEVELOPER)',
-                      style: theme.textTheme.labelMedium?.copyWith(
-                        fontWeight: FontWeight.bold,
-                        color: Colors.amber.shade900,
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    Card(
-                      elevation: 0,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        side: BorderSide(color: Colors.amber.shade400),
-                      ),
-                      color: Colors.amber.shade50.withValues(alpha: 0.5),
-                      child: ListTile(
-                        leading: CircleAvatar(
-                          backgroundColor: Colors.amber.shade100,
-                          child: Icon(Icons.developer_mode,
-                              color: Colors.amber.shade900),
-                        ),
-                        title: const Text('Panel Developer (Simulasi)',
-                            style: TextStyle(fontWeight: FontWeight.bold)),
-                        subtitle: const Text(
-                            'Uji tier, simulasi gagal bayar, kadaluwarsa & data dummy'),
-                        trailing:
-                            const Icon(Icons.arrow_forward_ios, size: 16),
-                        onTap: () => Get.toNamed(Routes.DEVELOPER_PANEL),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                  ],
-                );
-              }),
-
-              if (requireLogin) ...[
-                FilledButton.icon(
-                  style: FilledButton.styleFrom(
-                    backgroundColor: theme.colorScheme.error,
-                    foregroundColor: theme.colorScheme.onError,
-                  ),
-                  onPressed: () => _handleLogout(context),
-                  icon: const Icon(Icons.logout),
-                  label: const Text('Keluar dari Akun Kasir'),
-                ),
-                const SizedBox(height: 16),
-              ],
-
-              // Versi Aplikasi dengan 7-tap detector untuk Developer Mode
-              Center(
-                child: InkWell(
-                  onTap: () => DeveloperPanelController.registerVersionTap(),
-                  borderRadius: BorderRadius.circular(8),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                        vertical: 8.0, horizontal: 16.0),
-                    child: Column(
-                      children: [
-                        Text(
-                          '$kAppName v1.0.0',
-                          textAlign: TextAlign.center,
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: theme.colorScheme.onSurfaceVariant,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        if (AppConfig.simulationMode)
-                          Text(
-                            'Mode Simulasi Aktif (Ketuk 7x untuk Developer)',
-                            textAlign: TextAlign.center,
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              color: Colors.amber.shade800,
-                              fontSize: 11,
-                            ),
-                          ),
-                      ],
-                    ),
-                  ),
                 ),
               ),
             ],
