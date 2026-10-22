@@ -36,6 +36,11 @@ abstract class PermissionKeys {
   static const expenseView = 'expense.view';
   static const expenseManage = 'expense.manage';
 
+  // Customers & Kasbon
+  static const customerView = 'customer.view';
+  static const customerManage = 'customer.manage';
+  static const customerCollect = 'customer.collect';
+
   // Settings & License
   static const settingsManage = 'settings.manage';
   static const licenseManage = 'license.manage';
@@ -68,6 +73,9 @@ abstract class PermissionKeys {
     backupManage,
     expenseView,
     expenseManage,
+    customerView,
+    customerManage,
+    customerCollect,
     settingsManage,
     licenseManage,
     employeeManage,

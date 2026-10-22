@@ -3,10 +3,14 @@ import 'package:get/get.dart' hide Value;
 import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../core/audit/audit_actions.dart';
+import '../../core/discount/discount_calculator.dart';
+import '../../core/features/feature_enum.dart';
 import '../../core/permissions/permission_keys.dart';
 import '../../core/permissions/permission_service.dart';
 import '../../core/services/audit_service.dart';
 import '../../core/services/auth_service.dart';
+import '../../core/services/feature_gate.dart';
 import '../../core/tax/tax_calculator.dart';
 import '../../core/utils/app_exception.dart';
 import '../local/app_database.dart';
@@ -22,6 +26,7 @@ class CheckoutCartItem {
   final int price; // Snapshot harga jual (Rupiah)
   final int costPrice; // Snapshot harga beli (Rupiah)
   final int discount; // Diskon per satuan item (Rupiah)
+  final int discountShare; // Porsi diskon total untuk baris ini (Rupiah)
 
   const CheckoutCartItem({
     required this.productId,
@@ -30,6 +35,7 @@ class CheckoutCartItem {
     required this.price,
     required this.costPrice,
     this.discount = 0,
+    this.discountShare = 0,
   });
 
   int get subtotal => (price - discount) * qty;
@@ -418,6 +424,7 @@ class SaleRepository {
     required String deviceId,
     required List<CheckoutCartItem> items,
     required List<CheckoutPayment> payments,
+    int? customerId,
     int overallDiscount = 0,
     int tax = 0,
     int? taxRateBps,
@@ -429,7 +436,63 @@ class SaleRepository {
       throw const AppException('Keranjang belanja kosong.');
     }
 
+    final hasAnyDiscount =
+        items.any((i) => i.discount > 0) || overallDiscount > 0;
+    if (hasAnyDiscount && Get.isRegistered<PermissionService>()) {
+      if (!PermissionService.to.can(PermissionKeys.posDiscount)) {
+        throw const AppException(
+          'Akses ditolak: Anda tidak memiliki izin untuk memberikan diskon (pos.discount).',
+          code: 'FORBIDDEN_DISCOUNT',
+        );
+      }
+    }
+
+    final creditPayments = payments.where((p) => p.method == 'credit').toList();
+    final totalCredit = creditPayments.fold<int>(0, (sum, p) => sum + p.amount);
+
+    if (totalCredit > 0) {
+      if (Get.isRegistered<FeatureGate>()) {
+        if (!FeatureGate.to.isEnabled(Feature.customerCredit)) {
+          throw const AppException(
+            'Fitur kasbon memerlukan lisensi Semi Premium ke atas.',
+            code: 'FEATURE_LOCKED',
+          );
+        }
+      }
+
+      if (customerId == null) {
+        throw const AppException(
+          'Pelanggan wajib dipilih untuk transaksi kasbon.',
+          code: 'CUSTOMER_REQUIRED',
+        );
+      }
+    }
+
     return await _db.transaction(() async {
+      Customer? customer;
+      if (customerId != null) {
+        customer = await _db.customerDao.getCustomerById(customerId);
+        if (customer == null) {
+          throw const AppException('Data pelanggan tidak ditemukan.', code: 'CUSTOMER_NOT_FOUND');
+        }
+        if (totalCredit > 0) {
+          if (!customer.isActive) {
+            throw AppException(
+              'Pelanggan "${customer.name}" berstatus nonaktif. Transaksi kasbon ditolak.',
+              code: 'CUSTOMER_INACTIVE',
+            );
+          }
+          if (customer.creditLimit != null) {
+            final currentBalance = await _db.customerDao.getCustomerBalance(customerId);
+            if (currentBalance + totalCredit > customer.creditLimit!) {
+              throw AppException(
+                'Total kasbon melebihi batas limit kredit pelanggan.',
+                code: 'CREDIT_LIMIT_EXCEEDED',
+              );
+            }
+          }
+        }
+      }
       // 1. Validasi kuantitas & stok setiap produk
       for (final item in items) {
         if (item.qty <= 0) {
@@ -509,6 +572,7 @@ class SaleRepository {
           deviceId: Value(deviceId),
           invoiceNo: Value(invoiceNo),
           cashierId: Value(cashierId),
+          customerId: Value(customerId),
           subtotal: Value(subtotal),
           discount: Value(totalDiscount),
           tax: Value(effectiveTax),
@@ -524,8 +588,16 @@ class SaleRepository {
       );
 
       // 5. Insert SaleItems (Snapshot) & Kurangi Stok
+      final itemSubtotals = items.map((i) => i.subtotal).toList();
+      final discountShares = DiscountCalculator.allocateOverallDiscount(
+        subtotals: itemSubtotals,
+        overallDiscount: overallDiscount,
+      );
+
       final insertedItems = <SaleItem>[];
-      for (final item in items) {
+      for (int i = 0; i < items.length; i++) {
+        final item = items[i];
+        final itemShare = discountShares[i];
         final product = await _productDao.getProductById(item.productId);
         final costPrice = product?.costPrice ?? item.costPrice;
 
@@ -538,6 +610,7 @@ class SaleRepository {
             price: Value(item.price),
             costPrice: Value(costPrice),
             discount: Value(item.discount),
+            discountShare: Value(itemShare),
             subtotal: Value(item.subtotal),
             createdAt: Value(now),
             updatedAt: Value(now),
@@ -554,6 +627,7 @@ class SaleRepository {
             price: item.price,
             costPrice: costPrice,
             discount: item.discount,
+            discountShare: itemShare,
             subtotal: item.subtotal,
             createdAt: now,
             updatedAt: now,
@@ -607,12 +681,28 @@ class SaleRepository {
         );
       }
 
+      // 9. Jejak audit jika ada porsi kasbon
+      if (totalCredit > 0 && Get.isRegistered<AuditService>()) {
+        await AuditService.to.log(
+          action: AuditActions.customerCreditSale,
+          entity: 'sales',
+          entityId: saleId,
+          detail: {
+            'invoiceNo': invoiceNo,
+            'customerId': customerId,
+            'customerName': customer?.name ?? 'Pelanggan',
+            'amount': totalCredit,
+          },
+        );
+      }
+
       final createdSale = Sale(
         id: saleId,
         uuid: saleUuid,
         deviceId: deviceId,
         invoiceNo: invoiceNo,
         cashierId: cashierId,
+        customerId: customerId,
         subtotal: subtotal,
         discount: totalDiscount,
         tax: effectiveTax,

@@ -1,7 +1,9 @@
 import 'package:drift/drift.dart';
+import 'customers.dart';
 import 'users.dart';
 
 @TableIndex(name: 'sales_created_at_idx', columns: {#createdAt})
+@TableIndex(name: 'sales_customer_id_idx', columns: {#customerId})
 class Sales extends Table {
   IntColumn get id => integer().autoIncrement()();
   TextColumn get uuid => text()();
@@ -9,6 +11,7 @@ class Sales extends Table {
   TextColumn get invoiceNo => text().unique()();
   @ReferenceName('salesAsCashier')
   IntColumn get cashierId => integer().references(Users, #id)();
+  IntColumn get customerId => integer().nullable().references(Customers, #id)();
   IntColumn get subtotal => integer().withDefault(const Constant(0))(); // Rupiah int
   IntColumn get discount => integer().withDefault(const Constant(0))(); // Rupiah int
   IntColumn get tax => integer().withDefault(const Constant(0))(); // Rupiah int

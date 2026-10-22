@@ -184,6 +184,7 @@ class SaleReturnRepository {
       );
 
       int subtotalRefund = 0;
+      final returnItemSubtotals = <int, int>{};
       for (final retItem in validItems) {
         final originItem = saleItemMap[retItem.saleItemId];
         if (originItem == null || originItem.productId != retItem.productId) {
@@ -203,7 +204,15 @@ class SaleReturnRepository {
           );
         }
 
-        subtotalRefund += retItem.subtotal;
+        // Net bayar baris item setelah diskon item & alokasi diskon total
+        final netLineSubtotal = (originItem.subtotal - originItem.discountShare)
+            .clamp(0, originItem.subtotal);
+        final itemRefund = originItem.qty > 0
+            ? (netLineSubtotal * retItem.qty) ~/ originItem.qty
+            : retItem.subtotal;
+
+        returnItemSubtotals[retItem.saleItemId] = itemRefund;
+        subtotalRefund += itemRefund;
       }
 
       // 4. Perhitungan pajak proporsional & guard total refund
@@ -240,12 +249,27 @@ class SaleReturnRepository {
         }
       }
 
-      // 5. Generate returnNo & UUID
+      // 5. Hitung porsi refund kasbon jika penjualan memiliki pembayaran kredit
+      int creditRefund = 0;
+      final salePayments = await _saleDao.getPaymentsBySaleId(sale.id);
+      final totalCreditOnSale = salePayments
+          .where((p) => p.method == 'credit')
+          .fold<int>(0, (sum, p) => sum + p.amount);
+
+      if (totalCreditOnSale > 0) {
+        final previousCreditRefund =
+            await _saleReturnDao.getTotalCreditRefundForSale(sale.id);
+        final remainingCreditOnSale =
+            (totalCreditOnSale - previousCreditRefund).clamp(0, totalCreditOnSale);
+        creditRefund = totalRefund.clamp(0, remainingCreditOnSale);
+      }
+
+      // 6. Generate returnNo & UUID
       final now = DateTime.now();
       final returnNo = await generateReturnNo(date: now);
       final returnUuid = const Uuid().v4();
 
-      // 6. Simpan SaleReturn
+      // 7. Simpan SaleReturn
       final returnId = await _saleReturnDao.insertReturn(
         SaleReturnsCompanion(
           uuid: Value(returnUuid),
@@ -255,6 +279,7 @@ class SaleReturnRepository {
           subtotal: Value(subtotalRefund),
           taxRefund: Value(taxRefund),
           total: Value(totalRefund),
+          creditRefund: Value(creditRefund),
           refundMethod: Value(input.refundMethod),
           reason: Value(trimmedReason),
           createdBy: Value(currentUserId),
@@ -265,6 +290,7 @@ class SaleReturnRepository {
       // 7. Simpan SaleReturnItems & Kembalikan stok bila restock == true
       final insertedItems = <SaleReturnItem>[];
       for (final retItem in validItems) {
+        final itemSubtotal = returnItemSubtotals[retItem.saleItemId] ?? retItem.subtotal;
         final itemId = await _saleReturnDao.insertReturnItem(
           SaleReturnItemsCompanion(
             returnId: Value(returnId),
@@ -275,7 +301,7 @@ class SaleReturnRepository {
             unitPrice: Value(retItem.unitPrice),
             costPrice: Value(retItem.costPrice),
             restock: Value(retItem.restock),
-            subtotal: Value(retItem.subtotal),
+            subtotal: Value(itemSubtotal),
           ),
         );
 
@@ -290,7 +316,7 @@ class SaleReturnRepository {
             unitPrice: retItem.unitPrice,
             costPrice: retItem.costPrice,
             restock: retItem.restock,
-            subtotal: retItem.subtotal,
+            subtotal: itemSubtotal,
           ),
         );
 
@@ -332,6 +358,7 @@ class SaleReturnRepository {
         subtotal: subtotalRefund,
         taxRefund: taxRefund,
         total: totalRefund,
+        creditRefund: creditRefund,
         refundMethod: input.refundMethod,
         reason: trimmedReason,
         createdBy: currentUserId,

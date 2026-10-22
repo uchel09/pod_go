@@ -3,6 +3,9 @@ import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import '../../../routes/app_pages.dart';
 
+import '../../../core/discount/discount_calculator.dart';
+import '../../../core/permissions/permission_keys.dart';
+import '../../../core/permissions/permission_service.dart';
 import '../../../core/printing/printer_manager.dart';
 import '../../../core/utils/app_exception.dart';
 import '../../../core/utils/currency_formatter.dart';
@@ -11,6 +14,8 @@ import '../../../core/widgets/confirm_dialog.dart';
 import '../../../core/widgets/error_state.dart';
 import '../../../core/widgets/loading_indicator.dart';
 import '../../../data/local/app_database.dart';
+import '../../../data/local/daos/customer_dao.dart';
+import '../../../data/repositories/customer_repository.dart';
 import '../../../data/repositories/sale_repository.dart';
 import '../controllers/pos_controller.dart';
 
@@ -574,7 +579,11 @@ class PosView extends GetView<PosController> {
                         borderRadius: BorderRadius.circular(4),
                       ),
                       child: Text(
-                        discount > 0 ? 'Disc: -${formatRupiah(discount)}' : '+ Diskon',
+                        discount > 0
+                            ? (item.isDiscountPercent.value
+                                ? 'Disc ${item.discountValue.value}%: -${formatRupiah(discount)}'
+                                : 'Disc: -${formatRupiah(discount)}')
+                            : '+ Diskon',
                         style: TextStyle(
                           fontSize: 10.5,
                           fontWeight: FontWeight.bold,
@@ -628,36 +637,64 @@ class PosView extends GetView<PosController> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // Subtotal
+          // Subtotal Kotor
           Obx(() => _buildSummaryRow('Subtotal', formatRupiah(controller.subtotalAmount), theme)),
 
-          // Diskon Total
+          // Diskon Item (bila ada)
           Obx(() {
-            final disc = controller.totalDiscountAmount;
-            return Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Row(
-                  children: [
-                    const Text('Total Diskon', style: TextStyle(fontSize: 12)),
-                    if (controller.canDiscount) ...[
-                      const SizedBox(width: 4),
-                      InkWell(
-                        onTap: () => _showOverallDiscountDialog(context),
-                        child: Icon(Icons.edit_outlined, size: 14, color: theme.colorScheme.primary),
-                      ),
-                    ],
-                  ],
-                ),
-                Text(
-                  disc > 0 ? '-${formatRupiah(disc)}' : 'Rp 0',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: disc > 0 ? Colors.green.shade800 : Colors.grey,
-                    fontWeight: disc > 0 ? FontWeight.bold : FontWeight.normal,
+            final itemDisc = controller.itemsDiscountTotal;
+            if (itemDisc <= 0) return const SizedBox.shrink();
+            return Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text('Diskon Item', style: TextStyle(fontSize: 12, color: Colors.green)),
+                  Text(
+                    '-${formatRupiah(itemDisc)}',
+                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.green),
                   ),
-                ),
-              ],
+                ],
+              ),
+            );
+          }),
+
+          // Diskon Nota / Transaksi
+          Obx(() {
+            final overallDisc = controller.calculatedOverallDiscount;
+            final isPercent = controller.isOverallDiscountPercent.value;
+            final val = controller.overallDiscountValue.value;
+            final label = (isPercent && val > 0)
+                ? 'Diskon Nota ($val%)'
+                : 'Diskon Nota';
+
+            return Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Row(
+                    children: [
+                      Text(label, style: const TextStyle(fontSize: 12)),
+                      if (controller.canDiscount) ...[
+                        const SizedBox(width: 4),
+                        InkWell(
+                          onTap: () => _showOverallDiscountDialog(context),
+                          child: Icon(Icons.edit_outlined, size: 14, color: theme.colorScheme.primary),
+                        ),
+                      ],
+                    ],
+                  ),
+                  Text(
+                    overallDisc > 0 ? '-${formatRupiah(overallDisc)}' : 'Rp 0',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: overallDisc > 0 ? Colors.green.shade800 : Colors.grey,
+                      fontWeight: overallDisc > 0 ? FontWeight.bold : FontWeight.normal,
+                    ),
+                  ),
+                ],
+              ),
             );
           }),
 
@@ -1109,7 +1146,75 @@ class PosView extends GetView<PosController> {
                     ],
                   ),
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 10),
+
+                // Pemilihan Pelanggan (Kasbon / Hutang)
+                Obx(() {
+                  final selected = controller.selectedCustomer.value;
+                  return Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: selected != null ? Colors.blue.shade50 : Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: selected != null ? Colors.blue.shade300 : Theme.of(context).colorScheme.outlineVariant,
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.person_outline,
+                          color: selected != null ? Colors.blue.shade800 : Colors.grey,
+                          size: 20,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: selected == null
+                              ? Text(
+                                  controller.hasCustomerFeature
+                                      ? 'Pelanggan: Umum (Pilih jika Kasbon)'
+                                      : 'Pelanggan: Umum',
+                                  style: const TextStyle(fontSize: 12, color: Colors.black87),
+                                )
+                              : Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      selected.customer.name,
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.bold,
+                                        color: selected.customer.isActive ? Colors.blue.shade900 : Colors.red,
+                                      ),
+                                    ),
+                                    Text(
+                                      'Hutang: ${formatRupiah(selected.balance)}${selected.customer.creditLimit != null ? ' | Limit: ${formatRupiah(selected.customer.creditLimit!)}' : ''}',
+                                      style: TextStyle(fontSize: 11, color: Colors.blue.shade800),
+                                    ),
+                                  ],
+                                ),
+                        ),
+                        if (controller.hasCustomerFeature) ...[
+                          if (selected != null)
+                            IconButton(
+                              icon: const Icon(Icons.close, size: 16),
+                              tooltip: 'Hapus Pelanggan',
+                              onPressed: () => controller.selectCustomer(null),
+                            ),
+                          TextButton(
+                            style: TextButton.styleFrom(
+                              visualDensity: VisualDensity.compact,
+                              padding: const EdgeInsets.symmetric(horizontal: 8),
+                            ),
+                            onPressed: () => _showCustomerSelectorDialog(context),
+                            child: Text(selected == null ? 'Pilih' : 'Ganti'),
+                          ),
+                        ],
+                      ],
+                    ),
+                  );
+                }),
+                const SizedBox(height: 8),
 
                 // Baris Pembayaran (Split Payment)
                 Expanded(
@@ -1127,11 +1232,13 @@ class PosView extends GetView<PosController> {
                                       // Metode Dropdown
                                       DropdownButton<String>(
                                         value: row.method,
-                                        items: const [
-                                          DropdownMenuItem(value: 'cash', child: Text('Tunai (Cash)')),
-                                          DropdownMenuItem(value: 'qris', child: Text('QRIS')),
-                                          DropdownMenuItem(value: 'transfer', child: Text('Transfer')),
-                                          DropdownMenuItem(value: 'other', child: Text('Lainnya')),
+                                        items: [
+                                          const DropdownMenuItem(value: 'cash', child: Text('Tunai (Cash)')),
+                                          const DropdownMenuItem(value: 'qris', child: Text('QRIS')),
+                                          const DropdownMenuItem(value: 'transfer', child: Text('Transfer')),
+                                          const DropdownMenuItem(value: 'other', child: Text('Lainnya')),
+                                          if (controller.hasCustomerFeature)
+                                            const DropdownMenuItem(value: 'credit', child: Text('Kasbon (Hutang)')),
                                         ],
                                         onChanged: (val) {
                                           if (val != null) row.method = val;
@@ -1264,11 +1371,47 @@ class PosView extends GetView<PosController> {
                     onPressed: (isUnderpaid || isSaving)
                         ? null
                         : () async {
-                            isProcessingPayment.value = true;
                             final payments = rows.map((r) {
                               return CheckoutPayment(method: r.method, amount: r.amount);
                             }).toList();
 
+                            // Validasi jika ada pembayaran Kasbon (credit)
+                            final creditPayments = payments.where((p) => p.method == 'credit').toList();
+                            if (creditPayments.isNotEmpty) {
+                              final cust = controller.selectedCustomer.value;
+                              if (cust == null) {
+                                Get.snackbar(
+                                  'Pilih Pelanggan',
+                                  'Silakan pilih pelanggan terlebih dahulu untuk transaksi Kasbon.',
+                                  snackPosition: SnackPosition.BOTTOM,
+                                );
+                                return;
+                              }
+                              if (!cust.customer.isActive) {
+                                Get.snackbar(
+                                  'Pelanggan Nonaktif',
+                                  'Pelanggan "${cust.customer.name}" berstatus nonaktif. Tidak dapat melakukan kasbon.',
+                                  snackPosition: SnackPosition.BOTTOM,
+                                );
+                                return;
+                              }
+                              final totalCredit = creditPayments.fold<int>(0, (sum, p) => sum + p.amount);
+                              if (cust.customer.creditLimit != null) {
+                                final newTotalDebt = cust.balance + totalCredit;
+                                if (newTotalDebt > cust.customer.creditLimit!) {
+                                  final remainingLimit = (cust.customer.creditLimit! - cust.balance).clamp(0, cust.customer.creditLimit!);
+                                  _showCreditLimitExceededDialog(
+                                    context,
+                                    customer: cust,
+                                    creditAmount: totalCredit,
+                                    remainingLimit: remainingLimit,
+                                  );
+                                  return;
+                                }
+                              }
+                            }
+
+                            isProcessingPayment.value = true;
                             if (Navigator.of(context).canPop()) {
                               Navigator.of(context).pop(); // Tutup dialog bayar
                             }
@@ -1316,26 +1459,406 @@ class PosView extends GetView<PosController> {
     return list.take(4).toList();
   }
 
+  void _showCreditLimitExceededDialog(
+    BuildContext context, {
+    required CustomerWithBalance customer,
+    required int creditAmount,
+    required int remainingLimit,
+  }) {
+    Get.dialog(
+      AlertDialog(
+        title: Row(
+          children: [
+            Icon(Icons.warning_amber_rounded, color: Colors.red.shade700),
+            const SizedBox(width: 8),
+            const Text('Batas Limit Kasbon'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Transaksi kasbon ini melebihi batas limit piutang pelanggan "${customer.customer.name}".',
+            ),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.red.shade50,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.red.shade200),
+              ),
+              child: Column(
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text('Batas Limit:'),
+                      Text(formatRupiah(customer.customer.creditLimit!)),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text('Sisa Hutang Saat Ini:'),
+                      Text(formatRupiah(customer.balance)),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text('Sisa Limit Tersedia:'),
+                      Text(formatRupiah(remainingLimit), style: const TextStyle(fontWeight: FontWeight.bold)),
+                    ],
+                  ),
+                  const Divider(height: 12),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text('Kasbon Diajukan:'),
+                      Text(
+                        formatRupiah(creditAmount),
+                        style: TextStyle(fontWeight: FontWeight.bold, color: Colors.red.shade800),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          FilledButton(
+            onPressed: () => Get.back(),
+            child: const Text('Tutup'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showCustomerSelectorDialog(BuildContext context) {
+    final searchCtrl = TextEditingController();
+    final customerRepo = Get.find<CustomerRepository>();
+    final results = <CustomerWithBalance>[].obs;
+    final isLoading = true.obs;
+
+    void search(String q) async {
+      isLoading.value = true;
+      try {
+        final list = await customerRepo.getCustomers(query: q.isEmpty ? null : q, limit: 30);
+        results.assignAll(list);
+      } catch (_) {}
+      isLoading.value = false;
+    }
+
+    search('');
+
+    Get.dialog(
+      Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 450, maxHeight: 550),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text('Pilih Pelanggan', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                    IconButton(icon: const Icon(Icons.close), onPressed: () => Get.back()),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: searchCtrl,
+                        onChanged: (val) => search(val.trim()),
+                        decoration: InputDecoration(
+                          hintText: 'Cari nama / no. HP...',
+                          prefixIcon: const Icon(Icons.search, size: 20),
+                          isDense: true,
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                        ),
+                      ),
+                    ),
+                    if (PermissionService.to.can(PermissionKeys.customerManage)) ...[
+                      const SizedBox(width: 8),
+                      IconButton.filledTonal(
+                        tooltip: 'Tambah Pelanggan Baru',
+                        icon: const Icon(Icons.person_add),
+                        onPressed: () {
+                          _showQuickAddCustomerDialog(context, onCreated: (newCust) {
+                            controller.selectCustomer(newCust);
+                            Get.back(); // close selector dialog
+                          });
+                        },
+                      ),
+                    ],
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Expanded(
+                  child: Obx(() {
+                    if (isLoading.value) {
+                      return const Center(child: CircularProgressIndicator());
+                    }
+                    if (results.isEmpty) {
+                      return const Center(child: Text('Tidak ada pelanggan ditemukan.'));
+                    }
+                    return ListView.separated(
+                      itemCount: results.length,
+                      separatorBuilder: (_, _) => const Divider(height: 1),
+                      itemBuilder: (context, idx) {
+                        final item = results[idx];
+                        final c = item.customer;
+                        final phonePrefix = c.phone != null ? '${c.phone} | ' : '';
+                        final limitSuffix = c.creditLimit != null ? ' (Limit: ${formatRupiah(c.creditLimit!)})' : '';
+                        return ListTile(
+                          title: Text(
+                            c.name,
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: c.isActive ? null : Colors.grey,
+                            ),
+                          ),
+                          subtitle: Text(
+                            '$phonePrefix' 'Hutang: ${formatRupiah(item.balance)}$limitSuffix',
+                            style: const TextStyle(fontSize: 11),
+                          ),
+                          trailing: item.balance > 0
+                              ? Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: Colors.red.shade50,
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                  child: Text('Kasbon', style: TextStyle(fontSize: 10, color: Colors.red.shade800)),
+                                )
+                              : null,
+                          onTap: () {
+                            controller.selectCustomer(item);
+                            Get.back();
+                          },
+                        );
+                      },
+                    );
+                  }),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showQuickAddCustomerDialog(
+    BuildContext context, {
+    required void Function(CustomerWithBalance) onCreated,
+  }) {
+    final formKey = GlobalKey<FormState>();
+    final nameCtrl = TextEditingController();
+    final phoneCtrl = TextEditingController();
+    final limitCtrl = TextEditingController();
+
+    Get.dialog(
+      AlertDialog(
+        title: const Text('Tambah Pelanggan Cepat'),
+        content: Form(
+          key: formKey,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextFormField(
+                  controller: nameCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'Nama Pelanggan *',
+                    border: OutlineInputBorder(),
+                  ),
+                  validator: (val) => val == null || val.trim().isEmpty ? 'Nama wajib diisi' : null,
+                  autofocus: true,
+                ),
+                const SizedBox(height: 10),
+                TextFormField(
+                  controller: phoneCtrl,
+                  keyboardType: TextInputType.phone,
+                  decoration: const InputDecoration(
+                    labelText: 'No. HP / WhatsApp',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                TextFormField(
+                  controller: limitCtrl,
+                  keyboardType: TextInputType.number,
+                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                  decoration: const InputDecoration(
+                    labelText: 'Limit Hutang (Kosongkan bila tanpa batas)',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Get.back(), child: const Text('Batal')),
+          FilledButton(
+            onPressed: () async {
+              if (formKey.currentState!.validate()) {
+                final customerRepo = Get.find<CustomerRepository>();
+                try {
+                  final limit = limitCtrl.text.trim().isNotEmpty ? int.tryParse(limitCtrl.text.trim()) : null;
+                  final created = await customerRepo.createCustomer(
+                    CreateCustomerInput(
+                      name: nameCtrl.text.trim(),
+                      phone: phoneCtrl.text.trim().isNotEmpty ? phoneCtrl.text.trim() : null,
+                      creditLimit: limit,
+                    ),
+                  );
+                  Get.back(); // close quick add dialog
+                  onCreated(created);
+                } catch (e) {
+                  Get.snackbar('Error', 'Gagal menambah pelanggan: $e');
+                }
+              }
+            },
+            child: const Text('Simpan'),
+          ),
+        ],
+      ),
+    );
+  }
+
   // ==========================================
   // DIALOG DISKON & KUANTITAS
   // ==========================================
 
   void _showItemDiscountDialog(BuildContext context, PosCartItem item) {
-    final controllerText = TextEditingController(text: item.discount.value > 0 ? item.discount.value.toString() : '');
+    final isPercent = item.isDiscountPercent.value.obs;
+    final initialVal = item.discountValue.value > 0
+        ? item.discountValue.value.toString()
+        : (item.discount.value > 0 ? item.discount.value.toString() : '');
+    final controllerText = TextEditingController(text: initialVal);
+    final previewDiscount = 0.obs;
+    final previewPrice = item.product.sellPrice.obs;
+
+    void updatePreview() {
+      final val = int.tryParse(controllerText.text) ?? 0;
+      final res = DiscountCalculator.calculateItemDiscount(
+        unitPrice: item.product.sellPrice,
+        qty: 1,
+        discountValue: val,
+        isPercent: isPercent.value,
+      );
+      previewDiscount.value = res.unitDiscount;
+      previewPrice.value = item.product.sellPrice - res.unitDiscount;
+    }
+
+    updatePreview();
 
     Get.dialog(
       AlertDialog(
         title: Text('Diskon: ${item.product.name}'),
-        content: TextField(
-          controller: controllerText,
-          keyboardType: TextInputType.number,
-          inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-          autofocus: true,
-          decoration: const InputDecoration(
-            labelText: 'Nominal Diskon per Unit (Rp)',
-            prefixText: 'Rp ',
-            border: OutlineInputBorder(),
-          ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              'Harga Normal: ${formatRupiah(item.product.sellPrice)}',
+              style: const TextStyle(fontSize: 12, color: Colors.grey),
+            ),
+            const SizedBox(height: 12),
+            Obx(() => Row(
+                  children: [
+                    Expanded(
+                      child: ChoiceChip(
+                        label: const Text('Nominal (Rp)'),
+                        selected: !isPercent.value,
+                        onSelected: (_) {
+                          isPercent.value = false;
+                          updatePreview();
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: ChoiceChip(
+                        label: const Text('Persen (%)'),
+                        selected: isPercent.value,
+                        onSelected: (_) {
+                          isPercent.value = true;
+                          updatePreview();
+                        },
+                      ),
+                    ),
+                  ],
+                )),
+            const SizedBox(height: 12),
+            Obx(() => TextField(
+                  controller: controllerText,
+                  keyboardType: TextInputType.number,
+                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                  autofocus: true,
+                  onChanged: (_) => updatePreview(),
+                  decoration: InputDecoration(
+                    labelText: isPercent.value
+                        ? 'Persentase Diskon (0-100%)'
+                        : 'Nominal Diskon per Unit (Rp)',
+                    prefixText: isPercent.value ? null : 'Rp ',
+                    suffixText: isPercent.value ? '%' : null,
+                    border: const OutlineInputBorder(),
+                  ),
+                )),
+            const SizedBox(height: 12),
+            Obx(() => Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade100,
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text('Potongan per unit:', style: TextStyle(fontSize: 11)),
+                          Text(
+                            '-${formatRupiah(previewDiscount.value)}',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                              color: previewDiscount.value > 0 ? Colors.green.shade800 : Colors.grey,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text('Harga Jadi:', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                          Text(
+                            formatRupiah(previewPrice.value),
+                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Theme.of(context).colorScheme.primary),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                )),
+          ],
         ),
         actions: [
           TextButton(
@@ -1349,7 +1872,7 @@ class PosView extends GetView<PosController> {
           FilledButton(
             onPressed: () {
               final val = int.tryParse(controllerText.text) ?? 0;
-              controller.setItemDiscount(item, val);
+              controller.setItemDiscount(item, val, isPercent: isPercent.value);
               Get.back();
               controller.refocusSearch();
             },
@@ -1365,20 +1888,42 @@ class PosView extends GetView<PosController> {
       text: controller.overallDiscountValue.value > 0 ? controller.overallDiscountValue.value.toString() : '',
     );
     final isPercent = controller.isOverallDiscountPercent.value.obs;
+    final baseSubtotal = controller.subtotalAmount - controller.itemsDiscountTotal;
+    final previewDiscount = 0.obs;
+
+    void updatePreview() {
+      final val = int.tryParse(controllerText.text) ?? 0;
+      previewDiscount.value = DiscountCalculator.calculateOverallDiscount(
+        subtotal: baseSubtotal,
+        discountValue: val,
+        isPercent: isPercent.value,
+      );
+    }
+
+    updatePreview();
 
     Get.dialog(
       AlertDialog(
         title: const Text('Diskon Transaksi'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            Text(
+              'Subtotal Dasar: ${formatRupiah(baseSubtotal)}',
+              style: const TextStyle(fontSize: 12, color: Colors.grey),
+            ),
+            const SizedBox(height: 12),
             Obx(() => Row(
                   children: [
                     Expanded(
                       child: ChoiceChip(
                         label: const Text('Nominal (Rp)'),
                         selected: !isPercent.value,
-                        onSelected: (_) => isPercent.value = false,
+                        onSelected: (_) {
+                          isPercent.value = false;
+                          updatePreview();
+                        },
                       ),
                     ),
                     const SizedBox(width: 8),
@@ -1386,7 +1931,10 @@ class PosView extends GetView<PosController> {
                       child: ChoiceChip(
                         label: const Text('Persen (%)'),
                         selected: isPercent.value,
-                        onSelected: (_) => isPercent.value = true,
+                        onSelected: (_) {
+                          isPercent.value = true;
+                          updatePreview();
+                        },
                       ),
                     ),
                   ],
@@ -1397,11 +1945,34 @@ class PosView extends GetView<PosController> {
                   keyboardType: TextInputType.number,
                   inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                   autofocus: true,
+                  onChanged: (_) => updatePreview(),
                   decoration: InputDecoration(
-                    labelText: isPercent.value ? 'Persentase Diskon (%)' : 'Nominal Diskon (Rp)',
+                    labelText: isPercent.value ? 'Persentase Diskon (0-100%)' : 'Nominal Diskon (Rp)',
                     prefixText: isPercent.value ? null : 'Rp ',
                     suffixText: isPercent.value ? '%' : null,
                     border: const OutlineInputBorder(),
+                  ),
+                )),
+            const SizedBox(height: 12),
+            Obx(() => Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade100,
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text('Potongan Nota:', style: TextStyle(fontSize: 12)),
+                      Text(
+                        '-${formatRupiah(previewDiscount.value)}',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                          color: previewDiscount.value > 0 ? Colors.green.shade800 : Colors.grey,
+                        ),
+                      ),
+                    ],
                   ),
                 )),
           ],

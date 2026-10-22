@@ -262,8 +262,11 @@ class EscPosGenerator {
     final subtotalLabel = data.isReturn ? 'Subtotal Retur' : 'Subtotal';
     bytes.addAll(_encodeLine(formatRow2(subtotalLabel, _formatNumber(data.subtotal), charsPerLine)));
 
-    if (data.discount > 0) {
-      bytes.addAll(_encodeLine(formatRow2('Diskon Nota', '-${_formatNumber(data.discount)}', charsPerLine)));
+    final totalItemsDiscount = data.items.fold<int>(0, (sum, i) => sum + (i.discount * i.qty));
+    final overallDiscount = (data.discount - totalItemsDiscount).clamp(0, data.discount);
+
+    if (overallDiscount > 0) {
+      bytes.addAll(_encodeLine(formatRow2('Diskon Nota', '-${_formatNumber(overallDiscount)}', charsPerLine)));
     }
 
     if (data.tax > 0) {

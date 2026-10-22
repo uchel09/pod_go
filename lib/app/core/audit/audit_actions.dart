@@ -44,6 +44,13 @@ abstract class AuditActions {
   static const expenseUpdate = 'expense.update';
   static const expenseVoid = 'expense.void';
 
+  // --- Pelanggan & Kasbon ---
+  static const customerCreate = 'customer.create';
+  static const customerUpdate = 'customer.update';
+  static const customerDeactivate = 'customer.deactivate';
+  static const customerCreditSale = 'customer.credit_sale';
+  static const customerPaymentReceived = 'customer.payment_received';
+
   // --- Manajemen Pengguna / Karyawan (Fase 2) ---
   static const userCreate = 'user.create';
   static const userUpdate = 'user.update';
@@ -65,6 +72,7 @@ abstract class AuditActions {
     'Produk',
     'Stok',
     'Penjualan',
+    'Pelanggan',
     'Akun',
     'Pengaturan',
     'Sistem',
@@ -75,6 +83,7 @@ abstract class AuditActions {
     if (action.startsWith('product.')) return 'Produk';
     if (action.startsWith('stock.')) return 'Stok';
     if (action.startsWith('sale.')) return 'Penjualan';
+    if (action.startsWith('customer.')) return 'Pelanggan';
     if (action.startsWith('auth.') || action.startsWith('user.')) return 'Akun';
     if (action.startsWith('settings.') || action.startsWith('license.')) return 'Pengaturan';
     if (action.startsWith('category.') ||
@@ -229,6 +238,30 @@ abstract class AuditActions {
         final amt = formatRupiah(d['amount'] ?? 0);
         final reason = d['reason'] ?? '-';
         return '$userName membatalkan pengeluaran $cat sebesar $amt (Alasan: $reason)';
+
+      case customerCreate:
+        final name = d['name'] ?? 'pelanggan';
+        return '$userName menambahkan pelanggan baru "$name"';
+
+      case customerUpdate:
+        final name = d['name'] ?? 'pelanggan';
+        return '$userName memperbarui data pelanggan "$name"';
+
+      case customerDeactivate:
+        final name = d['name'] ?? 'pelanggan';
+        return '$userName menonaktifkan pelanggan "$name"';
+
+      case customerCreditSale:
+        final name = d['customerName'] ?? 'pelanggan';
+        final amount = d['amount'] is int ? formatRupiah(d['amount'] as int) : 'Rp ${d['amount']}';
+        final inv = d['invoiceNo'] != null ? ' (${d['invoiceNo']})' : '';
+        return '$userName mencatat penjualan kasbon ke "$name" sebesar $amount$inv';
+
+      case customerPaymentReceived:
+        final name = d['customerName'] ?? 'pelanggan';
+        final amount = d['amount'] is int ? formatRupiah(d['amount'] as int) : 'Rp ${d['amount']}';
+        final method = d['method'] ?? 'cash';
+        return '$userName menerima pelunasan kasbon dari "$name" sebesar $amount via $method';
 
       case settingsUpdate:
         final keys = d['updatedKeys'] ?? d['keys'] ?? 'konfigurasi';

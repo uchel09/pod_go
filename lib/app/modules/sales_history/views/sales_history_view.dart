@@ -961,10 +961,16 @@ class SalesHistoryView extends GetView<SalesHistoryController> {
 
                           // Rincian Angka Keuangan
                           _buildRow('Subtotal', formatRupiah(sale.subtotal)),
-                          if (sale.discount > 0)
+                          if (detail.items.fold<int>(0, (sum, i) => sum + (i.discount * i.qty)) > 0)
+                            _buildRow(
+                              'Diskon Item',
+                              '-${formatRupiah(detail.items.fold<int>(0, (sum, i) => sum + (i.discount * i.qty)))}',
+                              color: Colors.green.shade800,
+                            ),
+                          if ((sale.discount - detail.items.fold<int>(0, (sum, i) => sum + (i.discount * i.qty))) > 0)
                             _buildRow(
                               'Diskon Nota',
-                              '-${formatRupiah(sale.discount)}',
+                              '-${formatRupiah(sale.discount - detail.items.fold<int>(0, (sum, i) => sum + (i.discount * i.qty)))}',
                               color: Colors.orange.shade800,
                             ),
                           if (sale.tax > 0)

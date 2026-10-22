@@ -69,6 +69,18 @@ class DashboardSummary {
   /// Laba bersih = grossProfit - totalExpenses. Null bila tidak berizin report.view_profit.
   final int? netProfit;
 
+  /// Total kas bersih yang benar-benar diterima dalam periode (pembayaran non-kasbon + pelunasan hutang - refund tunai retur)
+  final int cashInflow;
+
+  /// Total penjualan kasbon yang terjadi dalam periode
+  final int creditSales;
+
+  /// Total piutang usaha (saldo kasbon aktif seluruh pelanggan saat ini)
+  final int totalReceivables;
+
+  /// Total diskon yang diberikan (Rupiah integer)
+  final int totalDiscount;
+
   const DashboardSummary({
     required this.omzet,
     int? grossOmzet,
@@ -89,6 +101,10 @@ class DashboardSummary {
     this.totalExpenses = 0,
     this.expenseCount = 0,
     this.netProfit,
+    this.cashInflow = 0,
+    this.creditSales = 0,
+    this.totalReceivables = 0,
+    this.totalDiscount = 0,
   })  : grossOmzet = grossOmzet ?? omzet,
         netSales = netSales ?? omzet,
         netTax = netTax ?? (tax - taxRefund);
@@ -114,6 +130,10 @@ class DashboardSummary {
       totalExpenses: totalExpenses,
       expenseCount: expenseCount,
       netProfit: null,
+      cashInflow: cashInflow,
+      creditSales: creditSales,
+      totalReceivables: totalReceivables,
+      totalDiscount: totalDiscount,
     );
   }
 
@@ -137,6 +157,10 @@ class DashboardSummary {
     totalExpenses: 0,
     expenseCount: 0,
     netProfit: 0,
+    cashInflow: 0,
+    creditSales: 0,
+    totalReceivables: 0,
+    totalDiscount: 0,
   );
 }
 
@@ -376,6 +400,9 @@ class ReportDao extends DatabaseAccessor<AppDatabase> {
   $CategoriesTable get categories => db.categories;
   $PaymentsTable get payments => db.payments;
   $UsersTable get users => db.users;
+  $SaleReturnsTable get saleReturns => db.saleReturns;
+  $CustomerPaymentsTable get customerPayments => db.customerPayments;
+  $CustomersTable get customers => db.customers;
 
   Future<List<ExpenseCategoryAggregate>> getExpenseCategoryBreakdown({
     required DateTime from,
@@ -395,7 +422,8 @@ class ReportDao extends DatabaseAccessor<AppDatabase> {
       'SELECT '
       'COUNT(*) AS tx_count, '
       'COALESCE(SUM(total), 0) AS total_omzet, '
-      'COALESCE(SUM(tax), 0) AS total_tax '
+      'COALESCE(SUM(tax), 0) AS total_tax, '
+      'COALESCE(SUM(discount), 0) AS total_discount '
       'FROM sales '
       "WHERE status = 'completed' "
       '  AND created_at >= ? '
@@ -407,6 +435,7 @@ class ReportDao extends DatabaseAccessor<AppDatabase> {
     final txCount = salesRow?.read<int>('tx_count') ?? 0;
     final grossOmzet = salesRow?.read<int>('total_omzet') ?? 0;
     final grossTax = salesRow?.read<int>('total_tax') ?? 0;
+    final grossDiscount = salesRow?.read<int>('total_discount') ?? 0;
 
     // 2. Agregat item dan HPP dari snapshot sale_items
     final itemsRow = await customSelect(
@@ -474,7 +503,55 @@ class ReportDao extends DatabaseAccessor<AppDatabase> {
     final expenseCount = expensesRow?.read<int>('expense_count') ?? 0;
     final totalExpenses = expensesRow?.read<int>('total_expenses') ?? 0;
 
-    // 6. Perhitungan keuangan bersih konsisten (PROJECT_RULES.md Bagian 13)
+    // 6. Agregat kasbon, pelunasan kasbon, dan kas diterima
+    final creditSalesRow = await customSelect(
+      'SELECT COALESCE(SUM(p.amount), 0) AS credit_sales '
+      'FROM payments p '
+      'INNER JOIN sales s ON p.sale_id = s.id '
+      "WHERE s.status = 'completed' AND p.method = 'credit' "
+      '  AND s.created_at >= ? '
+      '  AND s.created_at < ?',
+      variables: [Variable<DateTime>(from), Variable<DateTime>(to)],
+      readsFrom: {sales, payments},
+    ).getSingleOrNull();
+    final creditSales = creditSalesRow?.read<int>('credit_sales') ?? 0;
+
+    final debtCollectedRow = await customSelect(
+      'SELECT COALESCE(SUM(amount), 0) AS debt_collected '
+      'FROM customer_payments '
+      'WHERE created_at >= ? '
+      '  AND created_at < ?',
+      variables: [Variable<DateTime>(from), Variable<DateTime>(to)],
+      readsFrom: {customerPayments},
+    ).getSingleOrNull();
+    final debtCollected = debtCollectedRow?.read<int>('debt_collected') ?? 0;
+
+    final cashRefundRow = await customSelect(
+      'SELECT COALESCE(SUM(total - credit_refund), 0) AS cash_refund '
+      'FROM sale_returns '
+      'WHERE created_at >= ? '
+      '  AND created_at < ?',
+      variables: [Variable<DateTime>(from), Variable<DateTime>(to)],
+      readsFrom: {saleReturns},
+    ).getSingleOrNull();
+    final cashRefund = cashRefundRow?.read<int>('cash_refund') ?? 0;
+
+    final nonCreditPaidRow = await customSelect(
+      'SELECT COALESCE(SUM(p.amount), 0) AS non_credit_paid '
+      'FROM payments p '
+      'INNER JOIN sales s ON p.sale_id = s.id '
+      "WHERE s.status = 'completed' AND p.method != 'credit' "
+      '  AND s.created_at >= ? '
+      '  AND s.created_at < ?',
+      variables: [Variable<DateTime>(from), Variable<DateTime>(to)],
+      readsFrom: {sales, payments},
+    ).getSingleOrNull();
+    final nonCreditPaid = nonCreditPaidRow?.read<int>('non_credit_paid') ?? 0;
+
+    final cashInflow = nonCreditPaid + debtCollected - cashRefund;
+    final totalReceivables = await attachedDatabase.customerDao.getTotalReceivables();
+
+    // 7. Perhitungan keuangan bersih konsisten (PROJECT_RULES.md Bagian 13)
     final netSales = grossOmzet - totalReturns;
     final netTax = grossTax - taxRefund;
     final netRevenue = netSales - netTax;
@@ -502,6 +579,10 @@ class ReportDao extends DatabaseAccessor<AppDatabase> {
       totalExpenses: totalExpenses,
       expenseCount: expenseCount,
       netProfit: netProfit,
+      cashInflow: cashInflow,
+      creditSales: creditSales,
+      totalReceivables: totalReceivables,
+      totalDiscount: grossDiscount,
     );
   }
 

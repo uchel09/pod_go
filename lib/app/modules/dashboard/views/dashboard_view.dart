@@ -190,6 +190,15 @@ class DashboardView extends GetView<DashboardController> {
           color: Colors.red.shade700,
           containerColor: Colors.red.shade50,
         ),
+      if (data.todayReceivables != null)
+        _MetricTile(
+          title: 'Total Piutang',
+          value: formatRupiah(data.todayReceivables),
+          subtitle: 'Kasbon belum lunas',
+          icon: Icons.account_balance_wallet_outlined,
+          color: Colors.amber.shade900,
+          containerColor: Colors.amber.shade50,
+        ),
       if (canViewProfit)
         _MetricTile(
           title: 'Laba Kotor Hari Ini',

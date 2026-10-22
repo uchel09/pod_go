@@ -102,6 +102,16 @@ class SaleReturnDao extends DatabaseAccessor<AppDatabase> with _$SaleReturnDaoMi
     return row.read(sumCol) ?? 0;
   }
 
+  /// Menghitung total porsi refund kasbon yang sudah dipotongkan untuk satu transaksi
+  Future<int> getTotalCreditRefundForSale(int saleId) async {
+    final sumCol = saleReturns.creditRefund.sum();
+    final query = selectOnly(saleReturns)
+      ..addColumns([sumCol])
+      ..where(saleReturns.saleId.equals(saleId));
+    final row = await query.getSingle();
+    return row.read(sumCol) ?? 0;
+  }
+
   /// Memeriksa apakah transaksi memiliki riwayat retur
   Future<bool> hasReturnsForSale(int saleId) async {
     final count = countAll();

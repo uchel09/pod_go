@@ -11,6 +11,7 @@ class SaleItems extends Table {
   IntColumn get price => integer().withDefault(const Constant(0))(); // snapshot, Rupiah int
   IntColumn get costPrice => integer().withDefault(const Constant(0))(); // snapshot, Rupiah int
   IntColumn get discount => integer().withDefault(const Constant(0))(); // Rupiah int
+  IntColumn get discountShare => integer().withDefault(const Constant(0))(); // Porsi alokasi diskon total (Rupiah int)
   IntColumn get subtotal => integer().withDefault(const Constant(0))(); // Rupiah int
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
   DateTimeColumn get updatedAt => dateTime().withDefault(currentDateAndTime)();

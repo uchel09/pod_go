@@ -7,6 +7,7 @@ enum Feature {
   fullReports,
   autoBackup,
   expenses,
+  customerCredit,
   teamManagement,
   attendance,
   customRoles,
@@ -30,6 +31,8 @@ enum Feature {
         return 'Pencadangan Otomatis';
       case Feature.expenses:
         return 'Pengeluaran Operasional';
+      case Feature.customerCredit:
+        return 'Pelanggan & Kasbon';
       case Feature.teamManagement:
         return 'Multi-User & Tim Kasir';
       case Feature.attendance:

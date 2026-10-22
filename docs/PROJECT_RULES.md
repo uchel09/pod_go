@@ -140,17 +140,25 @@ View  ──>  Controller  ──>  Repository  ──>  DAO / Local DB
 - Fitur ekspor log aktivitas akan disediakan pada Prompt 14.
 
 ## 13. Definisi Angka Laporan Keuangan
-- **Omzet Bruto**: Jumlah `sales.total` dari transaksi berstatus `completed` (transaksi `void` TIDAK dihitung).
+- **Diskon Penjualan**:
+  - **Diskon Item**: Dicatat pada `sale_items.discount` (Rupiah integer per unit). Total diskon item baris = `discount * qty`.
+  - **Diskon Total / Nota**: Disimpan proporsional ke masing-masing item pada `sale_items.discountShare` menggunakan algoritma *Largest Remainder (Hare-Niemeyer)* sehingga penjumlahan porsi item selalu sama persis dengan diskon nota tanpa selisih 1 rupiah.
+  - **Total Diskon**: Akumulasi seluruh diskon transaksi (`sales.discount = itemsDiscount + overallDiscount`).
+  - **Dasar Pengenaan Pajak (Tax Basis)**: `Gross Subtotal - Total Diskon`.
+- **Omzet Bruto**: Jumlah `sales.total` dari transaksi berstatus `completed` (transaksi `void` TIDAK dihitung). Rumus: `Tax Basis + Pajak (exclusive)` atau `Tax Basis (inclusive)`.
 - **Total Retur**: Jumlah `sale_returns.total` dari transaksi retur yang terjadi dalam periode.
 - **Penjualan Bersih (Net Sales)**: `Omzet Bruto - Total Retur`.
 - **Pajak Bersih (Net Tax)**: `Pajak Penjualan - Pajak Retur (tax_refund)`.
-- **Pendapatan Bersih**: `Penjualan Bersih - Pajak Bersih`. (Catatan: diskon sudah memotong subtotal menjadi total di `sales.total`, sedangkan kolom `sales.discount` bernilai 0 sampai fitur diskon aktif).
+- **Pendapatan Bersih**: `Penjualan Bersih - Pajak Bersih`.
 - **HPP Bersih (Harga Pokok Penjualan)**: `HPP Penjualan - HPP Retur Restock`.
   - HPP Retur HANYA dihitung untuk barang yang opsi restock = true.
   - Barang rusak/tidak kembali ke stok (`restock = false`) TIDAK mengurangi HPP karena barang tersebut tetap hilang/menjadi beban inventaris.
 - **Laba Kotor**: `Pendapatan Bersih - HPP Bersih`.
 - **Pengeluaran Operasional (Expenses)**: Jumlah `expenses.amount` dari transaksi pengeluaran berstatus `active` dalam periode (transaksi `void` TIDAK dihitung).
 - **Laba Bersih**: `Laba Kotor - Pengeluaran Operasional`.
+- **Pengakuan Penjualan Kasbon (Piutang)**: Omzet penjualan tetap menghitung transaksi kasbon (pendapatan diakui saat penjualan terjadi / *accrual basis*).
+- **Kas Diterima (Cash Inflow)**: Total pembayaran non-kasbon saat penjualan + total pelunasan hutang (`customer_payments`) - pengembalian tunai retur.
+- **Piutang Usaha (Receivables)**: Total saldo kasbon pelanggan yang belum terlunasi.
 - Rumus ini wajib konsisten di semua komponen: DAO, Repository, Dashboard, dan Laporan.
 
 ## 14. Aturan Impor Data (CSV & Excel)
@@ -207,6 +215,25 @@ View  ──>  Controller  ──>  Repository  ──>  DAO / Local DB
   - Kategori bawaan: Listrik, Air, Sewa, Gaji, Transport, Kemasan, Perawatan, Lainnya.
   - Kategori yang sudah memiliki riwayat pengeluaran tidak dapat dihapus, namun dapat dinonaktifkan (`isActive = false`).
 - **Audit**: Setiap transaksi dicatat ke `audit_logs` dengan aksi `expense.create`, `expense.update`, atau `expense.void`.
+
+## 19. Aturan Pelanggan dan Hutang (Kasbon)
+- **Gating Lisensi**: Memerlukan lisensi Semi-Premium ke atas (`Feature.customerCredit`). Pada tier Gratis, menu dan opsi pembayaran kasbon terkunci/tidak tampil dan ditolak di level Repository (`FEATURE_LOCKED`).
+- **Izin & Akses (RBAC)**:
+  - `customer.view`: Melihat data pelanggan, saldo, riwayat kasbon, serta memilih pelanggan di kasir POS (Owner, Admin, Kasir).
+  - `customer.manage`: Membuat, mengedit profil, mengatur `creditLimit`, dan menonaktifkan pelanggan (Owner, Admin).
+  - `customer.collect`: Menerima pembayaran/pelunasan kasbon pelanggan (Owner, Admin).
+- **Perhitungan Saldo Dinamis (Non-Cached)**:
+  - Saldo pelanggan dihitung lewat agregat SQL: `Saldo = Total Kasbon (Penjualan Completed) - Total Pelunasan (customer_payments) - Total Retur Kasbon (credit_refund)`.
+  - Pembatalan transaksi kasbon (void) otomatis mengurangi saldo hutang karena void tidak berstatus `completed`.
+  - Saldo pelanggan tidak boleh negatif; pembayaran yang melebihi sisa hutang wajib ditolak (`EXCESSIVE_PAYMENT`).
+- **Validasi Checkout Kasir**:
+  - Transaksi kasbon wajib memilih pelanggan aktif. Pelanggan nonaktif ditolak (`CUSTOMER_INACTIVE`).
+  - Total kasbon kumulatif tidak boleh melebihi `creditLimit` pelanggan (`CREDIT_LIMIT_EXCEEDED`).
+  - Mendukung split payment (sebagian tunai/transfer, sisanya kasbon).
+- **Retur Transaksi Kasbon**:
+  - Dana refund memotong saldo hutang kasbon pelanggan terlebih dahulu (`credit_refund`), sisa refund baru dikembalikan tunai/metode lain.
+- **Audit**: Setiap transaksi dicatat ke `audit_logs` (`customer.create`, `customer.update`, `customer.deactivate`, `customer.credit_sale`, `customer.payment_received`).
+
 
 
 

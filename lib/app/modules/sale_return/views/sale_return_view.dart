@@ -135,12 +135,26 @@ class SaleReturnView extends GetView<SaleReturnController> {
                                         fontWeight: FontWeight.bold, fontSize: 14),
                                   ),
                                 ),
-                                Text(
-                                  formatRupiah(item.price),
-                                  style: TextStyle(
-                                    color: theme.colorScheme.primary,
-                                    fontWeight: FontWeight.bold,
-                                  ),
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.end,
+                                  children: [
+                                    Text(
+                                      formatRupiah(row.netUnitPrice),
+                                      style: TextStyle(
+                                        color: theme.colorScheme.primary,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                    if (row.netUnitPrice < item.price)
+                                      Text(
+                                        formatRupiah(item.price),
+                                        style: const TextStyle(
+                                          fontSize: 11,
+                                          color: Colors.grey,
+                                          decoration: TextDecoration.lineThrough,
+                                        ),
+                                      ),
+                                  ],
                                 ),
                               ],
                             ),

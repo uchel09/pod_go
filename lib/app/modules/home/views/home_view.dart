@@ -60,9 +60,39 @@ class HomeView extends GetView<HomeController> {
           final hasPurchases = FeatureGate.to.isEnabled(Feature.purchases);
           final hasOpname = FeatureGate.to.isEnabled(Feature.stockOpname);
           final hasExpenses = FeatureGate.to.isEnabled(Feature.expenses);
+          final hasCustomers = FeatureGate.to.isEnabled(Feature.customerCredit);
           return Column(
             mainAxisSize: MainAxisSize.min,
             children: [
+              IconButton(
+                tooltip: hasCustomers ? 'Pelanggan & Kasbon' : 'Pelanggan (Perlu Semi-Premium)',
+                icon: Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    const Icon(Icons.people_outline),
+                    if (!hasCustomers)
+                      Positioned(
+                        right: -4,
+                        bottom: -4,
+                        child: Container(
+                          padding: const EdgeInsets.all(1),
+                          decoration: const BoxDecoration(
+                            color: Colors.amber,
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(Icons.lock, size: 10, color: Colors.black87),
+                        ),
+                      ),
+                  ],
+                ),
+                onPressed: () {
+                  if (hasCustomers) {
+                    Get.toNamed(Routes.CUSTOMERS);
+                  } else {
+                    FeatureGate.to.requireFeature(Feature.customerCredit);
+                  }
+                },
+              ),
               IconButton(
                 tooltip: hasExpenses ? 'Pengeluaran Operasional' : 'Pengeluaran (Perlu Semi-Premium)',
                 icon: Stack(
@@ -213,7 +243,14 @@ class HomeView extends GetView<HomeController> {
               final hasPurchases = FeatureGate.to.isEnabled(Feature.purchases);
               final hasOpname = FeatureGate.to.isEnabled(Feature.stockOpname);
               final hasExpenses = FeatureGate.to.isEnabled(Feature.expenses);
-              if (val == 'expenses') {
+              final hasCustomers = FeatureGate.to.isEnabled(Feature.customerCredit);
+              if (val == 'customers') {
+                if (hasCustomers) {
+                  Get.toNamed(Routes.CUSTOMERS);
+                } else {
+                  FeatureGate.to.requireFeature(Feature.customerCredit);
+                }
+              } else if (val == 'expenses') {
                 if (hasExpenses) {
                   Get.toNamed(Routes.EXPENSES);
                 } else {
@@ -251,9 +288,21 @@ class HomeView extends GetView<HomeController> {
               final hasPurchases = FeatureGate.to.isEnabled(Feature.purchases);
               final hasOpname = FeatureGate.to.isEnabled(Feature.stockOpname);
               final hasExpenses = FeatureGate.to.isEnabled(Feature.expenses);
+              final hasCustomers = FeatureGate.to.isEnabled(Feature.customerCredit);
               final hasImportExport = FeatureGate.to.isEnabled(Feature.importExport);
               final canBackup = PermissionService.to.can(PermissionKeys.backupManage);
               return [
+                PopupMenuItem(
+                  value: 'customers',
+                  child: Row(
+                    children: [
+                      const Icon(Icons.people_outline, size: 18),
+                      const SizedBox(width: 8),
+                      const Expanded(child: Text('Pelanggan & Kasbon')),
+                      if (!hasCustomers) const Icon(Icons.lock, size: 14, color: Colors.amber),
+                    ],
+                  ),
+                ),
                 PopupMenuItem(
                   value: 'expenses',
                   child: Row(
@@ -469,6 +518,45 @@ class HomeView extends GetView<HomeController> {
                       Get.toNamed(Routes.EXPENSES);
                     } else {
                       FeatureGate.to.requireFeature(Feature.expenses);
+                    }
+                  },
+                ),
+              ),
+              const SizedBox(height: 16),
+              Card(
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  side: BorderSide(color: theme.colorScheme.outlineVariant),
+                ),
+                child: ListTile(
+                  contentPadding: const EdgeInsets.all(16),
+                  leading: CircleAvatar(
+                    radius: 24,
+                    backgroundColor: Colors.indigo.shade50,
+                    child: Icon(Icons.people_outline, color: Colors.indigo.shade800),
+                  ),
+                  title: Row(
+                    children: [
+                      const Expanded(
+                        child: Text('Pelanggan & Kasbon', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                      ),
+                      Obx(() {
+                        final hasCust = FeatureGate.to.isEnabled(Feature.customerCredit);
+                        if (!hasCust) {
+                          return const Icon(Icons.lock, size: 16, color: Colors.amber);
+                        }
+                        return const SizedBox.shrink();
+                      }),
+                    ],
+                  ),
+                  subtitle: const Text('Kelola data pelanggan, pantau hutang/kasbon, dan terima pelunasan.'),
+                  trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+                  onTap: () {
+                    if (FeatureGate.to.isEnabled(Feature.customerCredit)) {
+                      Get.toNamed(Routes.CUSTOMERS);
+                    } else {
+                      FeatureGate.to.requireFeature(Feature.customerCredit);
                     }
                   },
                 ),

@@ -3,6 +3,7 @@ import 'package:drift_flutter/drift_flutter.dart';
 
 import 'daos/audit_dao.dart';
 import 'daos/category_dao.dart';
+import 'daos/customer_dao.dart';
 import 'daos/expense_dao.dart';
 import 'daos/license_dao.dart';
 import 'daos/opname_dao.dart';
@@ -20,6 +21,8 @@ import 'daos/user_dao.dart';
 import 'tables/app_settings.dart';
 import 'tables/audit_logs.dart';
 import 'tables/categories.dart';
+import 'tables/customer_payments.dart';
+import 'tables/customers.dart';
 import 'tables/expense_categories.dart';
 import 'tables/expenses.dart';
 import 'tables/licenses.dart';
@@ -68,6 +71,8 @@ part 'app_database.g.dart';
     AuditLogs,
     ExpenseCategories,
     Expenses,
+    Customers,
+    CustomerPayments,
   ],
   daos: [
     StoreDao,
@@ -86,13 +91,14 @@ part 'app_database.g.dart';
     AuditDao,
     LicenseDao,
     ExpenseDao,
+    CustomerDao,
   ],
 )
 class AppDatabase extends _$AppDatabase {
   AppDatabase([QueryExecutor? e]) : super(e ?? driftDatabase(name: 'pos_me'));
 
   @override
-  int get schemaVersion => 5;
+  int get schemaVersion => 7;
 
   @override
   MigrationStrategy get migration {
@@ -120,6 +126,30 @@ class AppDatabase extends _$AppDatabase {
         if (from < 5) {
           await m.createTable(expenseCategories);
           await m.createTable(expenses);
+        }
+        if (from < 6) {
+          await m.createTable(customers);
+          await m.createTable(customerPayments);
+          await m.addColumn(sales, sales.customerId);
+          await m.addColumn(saleReturns, saleReturns.creditRefund);
+          await customStatement(
+            'CREATE INDEX IF NOT EXISTS customers_name_idx ON customers (name);',
+          );
+          await customStatement(
+            'CREATE INDEX IF NOT EXISTS customers_phone_idx ON customers (phone);',
+          );
+          await customStatement(
+            'CREATE INDEX IF NOT EXISTS customer_payments_customer_id_idx ON customer_payments (customer_id);',
+          );
+          await customStatement(
+            'CREATE INDEX IF NOT EXISTS customer_payments_created_at_idx ON customer_payments (created_at);',
+          );
+          await customStatement(
+            'CREATE INDEX IF NOT EXISTS sales_customer_id_idx ON sales (customer_id);',
+          );
+        }
+        if (from < 7) {
+          await m.addColumn(saleItems, saleItems.discountShare);
         }
       },
       beforeOpen: (details) async {
@@ -149,6 +179,12 @@ class AppDatabase extends _$AppDatabase {
         );
         await customStatement(
           'CREATE INDEX IF NOT EXISTS idx_expenses_category_id ON expenses (category_id);',
+        );
+        await customStatement(
+          'CREATE INDEX IF NOT EXISTS idx_customer_payments_customer_id ON customer_payments (customer_id);',
+        );
+        await customStatement(
+          'CREATE INDEX IF NOT EXISTS idx_sales_customer_id ON sales (customer_id);',
         );
         await expenseDao.seedDefaultCategories();
       },

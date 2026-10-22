@@ -27,7 +27,19 @@ class ReturnableItemRow {
   })  : returnQty = initialQty.obs,
         restock = initialRestock.obs;
 
-  int get subtotal => returnQty.value * item.saleItem.price;
+  int get netUnitPrice {
+    if (item.saleItem.qty <= 0) return item.saleItem.price;
+    final netSubtotal = (item.saleItem.subtotal - item.saleItem.discountShare)
+        .clamp(0, item.saleItem.subtotal);
+    return netSubtotal ~/ item.saleItem.qty;
+  }
+
+  int get subtotal {
+    if (item.saleItem.qty <= 0) return returnQty.value * item.saleItem.price;
+    final netSubtotal = (item.saleItem.subtotal - item.saleItem.discountShare)
+        .clamp(0, item.saleItem.subtotal);
+    return (netSubtotal * returnQty.value) ~/ item.saleItem.qty;
+  }
 }
 
 class SaleReturnController extends GetxController {
@@ -196,7 +208,7 @@ class SaleReturnController extends GetxController {
                 productId: i.item.saleItem.productId,
                 productName: i.item.saleItem.productName,
                 qty: i.returnQty.value,
-                unitPrice: i.item.saleItem.price,
+                unitPrice: i.netUnitPrice,
                 costPrice: i.item.saleItem.costPrice,
                 restock: i.restock.value,
               ))

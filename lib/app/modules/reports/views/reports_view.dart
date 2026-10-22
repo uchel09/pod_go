@@ -467,6 +467,8 @@ class ReportsView extends GetView<ReportsController> {
                     const SizedBox(height: 20),
                     _buildExpensesBreakdownCard(context, report),
                     const SizedBox(height: 20),
+                    _buildReceivablesAgingCard(context, report),
+                    const SizedBox(height: 20),
                     _buildVoidSummaryCard(context, report),
                     const SizedBox(height: 32),
                   ],
@@ -711,6 +713,34 @@ class ReportsView extends GetView<ReportsController> {
         icon: Icons.shopping_bag_outlined,
         color: Colors.teal.shade700,
       ),
+      _SummaryCard(
+        label: 'Kas Diterima (Inflow)',
+        value: formatRupiah(report.summary.cashInflow),
+        icon: Icons.attach_money,
+        color: Colors.green.shade800,
+      ),
+      if (report.summary.creditSales > 0 || report.summary.totalReceivables > 0) ...[
+        _SummaryCard(
+          label: 'Kasbon Periode Ini',
+          value: formatRupiah(report.summary.creditSales),
+          icon: Icons.credit_score,
+          color: Colors.amber.shade900,
+        ),
+        _SummaryCard(
+          label: 'Total Sisa Piutang',
+          value: formatRupiah(report.summary.totalReceivables),
+          icon: Icons.account_balance_wallet_outlined,
+          color: Colors.deepOrange.shade800,
+        ),
+      ],
+      if (report.summary.totalDiscount > 0) ...[
+        _SummaryCard(
+          label: 'Total Diskon Diberikan',
+          value: formatRupiah(report.summary.totalDiscount),
+          icon: Icons.discount_outlined,
+          color: Colors.pink.shade700,
+        ),
+      ],
       if (report.summary.tax > 0) ...[
         _SummaryCard(
           label: report.summary.taxRefund > 0 ? 'Pajak Bersih' : 'Total Pajak Terkumpul',
@@ -1466,6 +1496,95 @@ class ReportsView extends GetView<ReportsController> {
                     'Seluruh stok produk dalam batas aman.',
                     style: TextStyle(color: Colors.green.shade800, fontSize: 13, fontWeight: FontWeight.w600),
                   ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Rekap Daftar & Umur Piutang (Kasbon)
+  Widget _buildReceivablesAgingCard(BuildContext context, FullReportData report) {
+    final theme = Theme.of(context);
+    final agingList = report.agingReport;
+    final totalReceivables = report.summary.totalReceivables;
+    final dateFmt = DateFormat('dd/MM/yyyy');
+
+    return Card(
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: theme.colorScheme.outlineVariant),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(20.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.account_balance_wallet_outlined, color: Colors.deepOrange.shade800),
+                const SizedBox(width: 8),
+                Text(
+                  'Daftar & Umur Piutang (Kasbon Pelanggan)',
+                  style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+                ),
+                const Spacer(),
+                Text(
+                  'Total: ${formatRupiah(totalReceivables)}',
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    color: Colors.deepOrange.shade800,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            if (agingList.isEmpty)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 16.0),
+                child: Center(
+                  child: Text(
+                    'Tidak ada piutang pelanggan saat ini (Seluruh kasbon lunas).',
+                    style: TextStyle(color: Colors.grey),
+                  ),
+                ),
+              )
+            else
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: DataTable(
+                  columnSpacing: 20,
+                  headingTextStyle: theme.textTheme.labelMedium?.copyWith(fontWeight: FontWeight.bold),
+                  columns: const [
+                    DataColumn(label: Text('Pelanggan')),
+                    DataColumn(label: Text('Total Hutang'), numeric: true),
+                    DataColumn(label: Text('Tgl Tertua')),
+                    DataColumn(label: Text('Umur'), numeric: true),
+                    DataColumn(label: Text('0 - 7 Hari'), numeric: true),
+                    DataColumn(label: Text('8 - 30 Hari'), numeric: true),
+                    DataColumn(label: Text('> 30 Hari'), numeric: true),
+                  ],
+                  rows: agingList.map((item) {
+                    return DataRow(
+                      cells: [
+                        DataCell(Text(item.customer.name, style: const TextStyle(fontWeight: FontWeight.w600))),
+                        DataCell(Text(formatRupiah(item.totalBalance))),
+                        DataCell(Text(item.oldestUnpaidDate != null ? dateFmt.format(item.oldestUnpaidDate!) : '-')),
+                        DataCell(Text('${item.ageDays} hr')),
+                        DataCell(Text(item.bucket0to7 > 0 ? formatRupiah(item.bucket0to7) : '-')),
+                        DataCell(Text(item.bucket8to30 > 0 ? formatRupiah(item.bucket8to30) : '-')),
+                        DataCell(Text(
+                          item.bucketOver30 > 0 ? formatRupiah(item.bucketOver30) : '-',
+                          style: TextStyle(
+                            color: item.bucketOver30 > 0 ? Colors.red.shade800 : null,
+                            fontWeight: item.bucketOver30 > 0 ? FontWeight.bold : null,
+                          ),
+                        )),
+                      ],
+                    );
+                  }).toList(),
                 ),
               ),
           ],

@@ -6,6 +6,9 @@ import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../../core/audit/audit_actions.dart';
+import '../../../core/discount/discount_calculator.dart';
+import '../../../core/features/feature_enum.dart';
 import '../../../core/permissions/permission_keys.dart';
 import '../../../core/permissions/permission_service.dart';
 import '../../../core/printing/printer_manager.dart';
@@ -20,6 +23,7 @@ import '../../../core/tax/tax_calculator.dart';
 import '../../../core/utils/app_exception.dart';
 import '../../../core/utils/device_id_service.dart';
 import '../../../data/local/app_database.dart';
+import '../../../data/local/daos/customer_dao.dart';
 import '../../../data/repositories/category_repository.dart';
 import '../../../data/repositories/product_repository.dart';
 import '../../../data/repositories/sale_repository.dart';
@@ -31,13 +35,19 @@ class PosCartItem {
   final Product product;
   final RxInt qty;
   final RxInt discount; // Rupiah per unit
+  final RxInt discountValue; // Nilai input (persen atau nominal)
+  final RxBool isDiscountPercent; // True jika persentase
 
   PosCartItem({
     required this.product,
     int initialQty = 1,
     int initialDiscount = 0,
+    int initialDiscountValue = 0,
+    bool initialIsDiscountPercent = false,
   })  : qty = initialQty.obs,
-        discount = initialDiscount.obs;
+        discount = initialDiscount.obs,
+        discountValue = initialDiscountValue.obs,
+        isDiscountPercent = initialIsDiscountPercent.obs;
 
   int get subtotal => (product.sellPrice - discount.value) * qty.value;
 }
@@ -75,6 +85,7 @@ class PosController extends GetxController {
   final heldCarts = <HeldCart>[].obs;
 
   final selectedCategoryId = Rxn<int>();
+  final selectedCustomer = Rxn<CustomerWithBalance>();
   final searchQuery = ''.obs;
   final searchController = TextEditingController();
 
@@ -119,6 +130,11 @@ class PosController extends GetxController {
   bool get canViewHistory => canSell || canVoid;
   bool get canEditProduct => PermissionService.to.can(PermissionKeys.productEdit);
   bool get isCameraSupported => ScannerService.to.isCameraSupported;
+  bool get hasCustomerFeature => FeatureGate.to.isEnabled(Feature.customerCredit);
+
+  void selectCustomer(CustomerWithBalance? customer) {
+    selectedCustomer.value = customer;
+  }
 
   int? get tierLimit => FeatureGate.to.productLimit;
 
@@ -455,20 +471,30 @@ class PosController extends GetxController {
     cartItems.refresh();
     overallDiscountValue.value = 0;
     isOverallDiscountPercent.value = false;
+    selectedCustomer.value = null;
     refocusSearch();
   }
 
-  void setItemDiscount(PosCartItem item, int discountRupiah) {
+  void setItemDiscount(PosCartItem item, int discountValue, {bool isPercent = false}) {
     if (!canDiscount) {
-      _notify('Akses Ditolak', 'Anda tidak memiliki izin memberikan diskon.');
+      _notify('Akses Ditolak', 'Anda tidak memiliki izin memberikan diskon (pos.discount).');
       return;
     }
-    item.discount.value = discountRupiah.clamp(0, item.product.sellPrice);
+    final res = DiscountCalculator.calculateItemDiscount(
+      unitPrice: item.product.sellPrice,
+      qty: item.qty.value,
+      discountValue: discountValue,
+      isPercent: isPercent,
+    );
+    item.isDiscountPercent.value = isPercent;
+    item.discountValue.value = isPercent ? discountValue.clamp(0, 100) : res.unitDiscount;
+    item.discount.value = res.unitDiscount;
+    cartItems.refresh();
   }
 
   void setOverallDiscount(int val, {bool isPercent = false}) {
     if (!canDiscount) {
-      _notify('Akses Ditolak', 'Anda tidak memiliki izin memberikan diskon.');
+      _notify('Akses Ditolak', 'Anda tidak memiliki izin memberikan diskon (pos.discount).');
       return;
     }
     isOverallDiscountPercent.value = isPercent;
@@ -488,11 +514,11 @@ class PosController extends GetxController {
   int get calculatedOverallDiscount {
     final base = subtotalAmount - itemsDiscountTotal;
     if (base <= 0) return 0;
-    if (isOverallDiscountPercent.value) {
-      final percent = overallDiscountValue.value.clamp(0, 100);
-      return (base * percent / 100).round();
-    }
-    return overallDiscountValue.value.clamp(0, base);
+    return DiscountCalculator.calculateOverallDiscount(
+      subtotal: base,
+      discountValue: overallDiscountValue.value,
+      isPercent: isOverallDiscountPercent.value,
+    );
   }
 
   int get totalDiscountAmount => itemsDiscountTotal + calculatedOverallDiscount;
@@ -533,6 +559,8 @@ class PosController extends GetxController {
         product: item.product,
         initialQty: item.qty.value,
         initialDiscount: item.discount.value,
+        initialDiscountValue: item.discountValue.value,
+        initialIsDiscountPercent: item.isDiscountPercent.value,
       );
     }).toList();
 
@@ -633,6 +661,7 @@ class PosController extends GetxController {
         deviceId: deviceId,
         items: checkoutItems,
         payments: payments,
+        customerId: selectedCustomer.value?.customer.id,
         overallDiscount: calculatedOverallDiscount,
         tax: taxAmount,
         taxRateBps: taxEnabled.value ? taxRateBps.value : 0,
@@ -734,12 +763,14 @@ class PosController extends GetxController {
     final threshPercent = int.tryParse(threshPercentStr ?? '') ?? 20;
 
     final discountTotal = sale.discount;
-    final percent = sale.subtotal > 0 ? (discountTotal * 100 / sale.subtotal).round() : 0;
+    final percent = sale.subtotal > 0
+        ? ((discountTotal * 100) + (sale.subtotal ~/ 2)) ~/ sale.subtotal
+        : 0;
 
     if (discountTotal >= threshNominal || percent >= threshPercent) {
       if (Get.isRegistered<AuditService>()) {
         AuditService.to.log(
-          action: 'pos.high_discount',
+          action: AuditActions.saleDiscountHigh,
           entity: 'sales',
           entityId: sale.id,
           detail: {

@@ -9,6 +9,10 @@ import '../modules/categories/bindings/categories_binding.dart';
 import '../modules/categories/views/categories_view.dart';
 import '../modules/checkout_simulation/bindings/checkout_simulation_binding.dart';
 import '../modules/checkout_simulation/views/checkout_simulation_view.dart';
+import '../modules/customer_detail/bindings/customer_detail_binding.dart';
+import '../modules/customer_detail/views/customer_detail_view.dart';
+import '../modules/customers/bindings/customers_binding.dart';
+import '../modules/customers/views/customers_view.dart';
 import '../modules/dashboard/bindings/dashboard_binding.dart';
 import '../modules/dashboard/views/dashboard_view.dart';
 import '../modules/developer_panel/bindings/developer_panel_binding.dart';
@@ -257,6 +261,18 @@ class AppPages {
       name: _Paths.EXPENSE_FORM,
       page: () => const ExpenseFormView(),
       binding: ExpenseFormBinding(),
+      middlewares: [AuthMiddleware()],
+    ),
+    GetPage(
+      name: _Paths.CUSTOMERS,
+      page: () => const CustomersView(),
+      binding: CustomersBinding(),
+      middlewares: [AuthMiddleware()],
+    ),
+    GetPage(
+      name: _Paths.CUSTOMER_DETAIL,
+      page: () => const CustomerDetailView(),
+      binding: CustomerDetailBinding(),
       middlewares: [AuthMiddleware()],
     ),
   ];

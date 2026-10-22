@@ -240,8 +240,14 @@ class ReceiptPdfService {
                 fontRegular,
                 bodyFontSize,
               ),
-              if (data.discount > 0)
-                _buildTwoCol('Diskon', '-${formatRupiah(data.discount)}', fontRegular, fontRegular, bodyFontSize),
+              if ((data.discount - data.items.fold<int>(0, (sum, i) => sum + (i.discount * i.qty))) > 0)
+                _buildTwoCol(
+                  'Diskon Nota',
+                  '-${formatRupiah(data.discount - data.items.fold<int>(0, (sum, i) => sum + (i.discount * i.qty)))}',
+                  fontRegular,
+                  fontRegular,
+                  bodyFontSize,
+                ),
               if (data.tax > 0)
                 _buildTwoCol(
                   data.isReturn

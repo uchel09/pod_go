@@ -6,6 +6,7 @@ import '../../core/permissions/permission_service.dart';
 import '../../core/services/auth_service.dart';
 import '../../core/services/feature_gate.dart';
 import '../../core/utils/app_exception.dart';
+import '../local/daos/customer_dao.dart';
 import '../local/daos/expense_dao.dart';
 import '../local/daos/report_dao.dart';
 
@@ -44,6 +45,12 @@ class DashboardData {
   /// Pajak hari ini (null jika user tidak memiliki izin report.view_profit)
   final int? todayTax;
 
+  /// Total piutang kasbon saat ini (null jika user tidak memiliki izin customer.view)
+  final int? todayReceivables;
+
+  /// Total diskon hari ini
+  final int todayDiscount;
+
   /// Data deret omzet 7 hari terakhir untuk grafik
   final List<DailyRevenuePoint> revenueChart;
 
@@ -65,6 +72,8 @@ class DashboardData {
     this.todayExpenses,
     this.todayCogs,
     this.todayTax,
+    this.todayReceivables,
+    this.todayDiscount = 0,
     required this.revenueChart,
     required this.lowStockProducts,
     required this.totalLowStockCount,
@@ -87,6 +96,7 @@ class FullReportData {
   final LowAndOutStockSummary stockAlerts;
   final VoidSummaryEntry voidSummary;
   final List<ExpenseCategoryAggregate> expenseCategoryBreakdown;
+  final List<CustomerAgingItem> agingReport;
   final bool isProfitVisible;
 
   const FullReportData({
@@ -103,6 +113,7 @@ class FullReportData {
     required this.stockAlerts,
     required this.voidSummary,
     this.expenseCategoryBreakdown = const [],
+    this.agingReport = const [],
     required this.isProfitVisible,
   });
 }
@@ -168,6 +179,8 @@ class ReportRepository {
     final canViewProfit = _hasPermission(PermissionKeys.reportViewProfit);
     final canViewExpenses = _isFeatureEnabled(Feature.expenses) &&
         _hasPermission(PermissionKeys.expenseView);
+    final canViewReceivables = _isFeatureEnabled(Feature.customerCredit) &&
+        _hasPermission(PermissionKeys.customerView);
 
     return DashboardData(
       todayOmzet: summary.netSales,
@@ -181,6 +194,8 @@ class ReportRepository {
       todayExpenses: canViewExpenses ? summary.totalExpenses : null,
       todayCogs: canViewProfit ? summary.cogs : null,
       todayTax: canViewProfit ? summary.netTax : null,
+      todayReceivables: canViewReceivables ? summary.totalReceivables : null,
+      todayDiscount: summary.totalDiscount,
       revenueChart: chartPoints,
       lowStockProducts: lowStock,
       totalLowStockCount: lowStockCount,
@@ -265,6 +280,7 @@ class ReportRepository {
       from: from,
       to: to,
     );
+    final agingReport = await _reportDao.attachedDatabase.customerDao.getAgingReport();
 
     // Sensor angka laba & HPP jika tidak punya izin report.view_profit
     final summary = canViewProfit ? summaryRaw : summaryRaw.copyWithProfitHidden();
@@ -297,6 +313,7 @@ class ReportRepository {
       stockAlerts: stockAlerts,
       voidSummary: voidSummary,
       expenseCategoryBreakdown: expenseBreakdown,
+      agingReport: agingReport,
       isProfitVisible: canViewProfit,
     );
   }

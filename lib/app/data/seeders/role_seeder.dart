@@ -34,6 +34,7 @@ class RoleSeeder {
         PermissionKeys.posDiscount,
         PermissionKeys.productView,
         PermissionKeys.stockView,
+        PermissionKeys.customerView,
         PermissionKeys.attendanceSelf,
       ],
     ),

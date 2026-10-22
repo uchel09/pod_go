@@ -686,6 +686,9 @@ class ExportRepository {
     rows.add(['Omzet (Penjualan Bersih Kasir)', data.summary.omzet]);
     rows.add(['Pajak', data.summary.tax]);
     rows.add(['Pendapatan Bersih', data.summary.netRevenue]);
+    rows.add(['Kas Diterima Bersih (Inflow)', data.summary.cashInflow]);
+    rows.add(['Penjualan Kasbon Periode Ini', data.summary.creditSales]);
+    rows.add(['Total Sisa Piutang Berjalan', data.summary.totalReceivables]);
     rows.add(['Jumlah Transaksi', data.summary.txCount]);
     rows.add(['Rata-rata Nilai Transaksi', data.avgTxValue]);
     if (data.isProfitVisible) {
@@ -811,6 +814,9 @@ class ExportRepository {
       ['Omzet (Penjualan Selesai)', data.summary.omzet],
       ['Pajak', data.summary.tax],
       ['Pendapatan Bersih', data.summary.netRevenue],
+      ['Kas Diterima Bersih (Inflow)', data.summary.cashInflow],
+      ['Penjualan Kasbon Periode Ini', data.summary.creditSales],
+      ['Total Sisa Piutang Berjalan', data.summary.totalReceivables],
       ['Jumlah Transaksi', data.summary.txCount],
       ['Rata-rata Transaksi', data.avgTxValue],
       if (data.isProfitVisible) ...[
@@ -896,6 +902,32 @@ class ExportRepository {
       alertRows.add(['MENIPIS', it.name, it.currentStock, it.minStock]);
     }
     writeSheet('Peringatan Stok', alertHeaders, alertRows);
+
+    if (data.agingReport.isNotEmpty) {
+      final piutangHeaders = [
+        'Nama Pelanggan',
+        'No. Telepon',
+        'Total Piutang',
+        'Tgl Tertua Belum Lunas',
+        'Umur (Hari)',
+        '0-7 Hari',
+        '8-30 Hari',
+        '>30 Hari',
+      ];
+      final piutangRows = data.agingReport.map((a) {
+        return [
+          a.customer.name,
+          a.customer.phone ?? '-',
+          a.totalBalance,
+          a.oldestUnpaidDate != null ? dateFmt.format(a.oldestUnpaidDate!) : '-',
+          a.ageDays,
+          a.bucket0to7,
+          a.bucket8to30,
+          a.bucketOver30,
+        ];
+      }).toList();
+      writeSheet('Daftar Piutang', piutangHeaders, piutangRows);
+    }
 
     // Hapus Sheet default Sheet1 bawaan library
     if (excel.sheets.containsKey('Sheet1')) {
@@ -1053,6 +1085,119 @@ class ExportRepository {
       rowCount: rows.length,
       format: format,
       type: ExportType.expenses,
+    );
+  }
+
+  /// Ekspor daftar master data pelanggan dan saldo hutang saat ini.
+  Future<ExportResult> exportCustomers({
+    required ExportFormat format,
+  }) async {
+    _assertExportAccess();
+
+    final entries = await _db.customerDao.getCustomersWithBalances(
+      limit: 1000000,
+    );
+
+    final headers = <String>[
+      'ID',
+      'Nama Pelanggan',
+      'No. Telepon',
+      'Alamat',
+      'Catatan',
+      'Limit Kredit',
+      'Saldo Kasbon',
+      'Status',
+    ];
+
+    final rows = entries.map((e) {
+      return [
+        e.id,
+        e.name,
+        e.phone ?? '',
+        e.address ?? '',
+        e.note ?? '',
+        e.creditLimit ?? 'Tanpa Batas',
+        e.balance,
+        e.isActive ? 'Aktif' : 'Nonaktif',
+      ];
+    }).toList();
+
+    final bytes = format == ExportFormat.csv
+        ? _encodeCsvWithBom([headers, ...rows])
+        : _encodeXlsx('Pelanggan', headers, rows);
+
+    final fileName = _generateFileName(ExportType.customers, format);
+
+    await _recordAudit(
+      type: ExportType.customers.name,
+      format: format.name,
+      rowCount: rows.length,
+      range: 'all',
+    );
+
+    return ExportResult(
+      fileName: fileName,
+      bytes: bytes,
+      rowCount: rows.length,
+      format: format,
+      type: ExportType.customers,
+    );
+  }
+
+  /// Ekspor laporan daftar dan analisa umur piutang (Aging Report).
+  Future<ExportResult> exportReceivables({
+    required ExportFormat format,
+  }) async {
+    _assertExportAccess();
+
+    final entries = await _db.customerDao.getAgingReport();
+    final dateFmt = DateFormat('yyyy-MM-dd');
+
+    final headers = <String>[
+      'ID Pelanggan',
+      'Nama Pelanggan',
+      'No. Telepon',
+      'Total Piutang',
+      'Transaksi Tertua Belum Lunas',
+      'Umur Piutang (Hari)',
+      '0-7 Hari',
+      '8-30 Hari',
+      '>30 Hari',
+    ];
+
+    final rows = entries.map((e) {
+      return [
+        e.customer.id,
+        e.customer.name,
+        e.customer.phone ?? '',
+        e.totalBalance,
+        e.oldestUnpaidDate != null ? dateFmt.format(e.oldestUnpaidDate!) : '-',
+        e.ageDays,
+        e.bucket0to7,
+        e.bucket8to30,
+        e.bucketOver30,
+      ];
+    }).toList();
+
+    final bytes = format == ExportFormat.csv
+        ? _encodeCsvWithBom([headers, ...rows])
+        : _encodeXlsx('Piutang', headers, rows);
+
+    final fileName = _generateFileName(ExportType.receivables, format);
+
+    await _recordAudit(
+      type: ExportType.receivables.name,
+      format: format.name,
+      rowCount: rows.length,
+      range: 'all',
+    );
+
+    return ExportResult(
+      fileName: fileName,
+      bytes: bytes,
+      rowCount: rows.length,
+      format: format,
+      type: ExportType.receivables,
     );
   }
 

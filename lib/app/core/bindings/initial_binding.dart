@@ -5,6 +5,7 @@ import '../../data/local/daos/report_dao.dart';
 import '../../data/repositories/audit_repository.dart';
 import '../../data/repositories/backup_repository.dart';
 import '../../data/repositories/category_repository.dart';
+import '../../data/repositories/customer_repository.dart';
 import '../../data/repositories/expense_repository.dart';
 import '../../data/repositories/export_repository.dart';
 import '../../data/repositories/import_repository.dart';
@@ -86,6 +87,13 @@ class InitialBinding extends Bindings {
       () => ExpenseRepository(
         db,
         db.expenseDao,
+      ),
+      fenix: true,
+    );
+    Get.lazyPut<CustomerRepository>(
+      () => CustomerRepository(
+        db,
+        db.customerDao,
       ),
       fenix: true,
     );

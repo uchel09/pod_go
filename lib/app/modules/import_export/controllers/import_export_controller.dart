@@ -335,6 +335,20 @@ class ImportExportController extends GetxController {
           title: 'Pengeluaran Operasional',
         );
         break;
+      case ExportType.customers:
+        _runExportOperation(
+          task: () => repo.exportCustomers(format: format),
+          format: format,
+          title: 'Data Pelanggan',
+        );
+        break;
+      case ExportType.receivables:
+        _runExportOperation(
+          task: () => repo.exportReceivables(format: format),
+          format: format,
+          title: 'Daftar Piutang',
+        );
+        break;
       case ExportType.fullReport:
         // Laporan lengkap diekspor melalui modul reports
         break;
